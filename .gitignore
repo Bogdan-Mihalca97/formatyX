@@ -1,0 +1,7 @@
+.env
+uploads/
+outputs/
+template_conference.docx
+__pycache__/
+*.pyc
+*.pyo
