@@ -498,7 +498,7 @@ def build_claude_message(paragraphs):
     return "\n".join(lines)
 
 
-def classify_with_claude(paragraphs, model="claude-sonnet-4-5-20251001"):
+def classify_with_claude(paragraphs, model="claude-sonnet-4-6"):
     """Send paragraphs to Claude for section classification."""
     client = anthropic.Anthropic()  # Uses ANTHROPIC_API_KEY env var
 
@@ -556,7 +556,7 @@ def classify_with_claude(paragraphs, model="claude-sonnet-4-5-20251001"):
     return section_map
 
 
-def parse_bibliography_ieee(entries, model="claude-sonnet-4-5-20251001"):
+def parse_bibliography_ieee(entries, model="claude-sonnet-4-6"):
     """Send bibliography entries to Claude to parse into IEEE-style structured parts.
 
     Returns a list of lists, where each inner list contains dicts:
@@ -748,7 +748,7 @@ def find_existing_references(paragraphs, section_map):
     return referenced_figures, referenced_tables
 
 
-def generate_reference_sentences(unreferenced_items, model="claude-sonnet-4-5-20251001"):
+def generate_reference_sentences(unreferenced_items, model="claude-sonnet-4-6"):
     """Generate natural Romanian introductory sentences for unreferenced tables/figures.
 
     Args:
@@ -824,7 +824,7 @@ Respond with a JSON array:
 
 
 def build_reference_insertions(paragraphs, section_map, figure_numbers, table_numbers,
-                                referenced_figures, referenced_tables, table_captions_map, model="claude-sonnet-4-5-20251001"):
+                                referenced_figures, referenced_tables, table_captions_map, model="claude-sonnet-4-6"):
     """Build a map of intro sentences to insert before unreferenced figures/tables.
 
     Returns:
@@ -873,7 +873,7 @@ def build_reference_insertions(paragraphs, section_map, figure_numbers, table_nu
     return insertions
 
 
-def generate_table_captions(table_infos, model="claude-sonnet-4-5-20251001"):
+def generate_table_captions(table_infos, model="claude-sonnet-4-6"):
     """Generate descriptive Romanian captions for tables based on their header rows.
 
     Args:
@@ -931,7 +931,7 @@ Rules:
     return result
 
 
-def translate_to_english(paragraphs_ro, model="claude-sonnet-4-5-20251001"):
+def translate_to_english(paragraphs_ro, model="claude-sonnet-4-6"):
     """Translate Romanian abstract paragraphs to English.
 
     Returns a list of translated paragraph strings.
@@ -959,7 +959,7 @@ Translate the given Romanian abstract text to English.
     return parts if parts else [translated]
 
 
-def build_formatted_document(doc_path, section_map, paragraphs, template_path, model="claude-sonnet-4-5-20251001", authors=None, title_en=None):
+def build_formatted_document(doc_path, section_map, paragraphs, template_path, model="claude-sonnet-4-6", authors=None, title_en=None):
     """Build the formatted output document using the template styles."""
 
     # Create fresh template
@@ -1469,8 +1469,8 @@ def main():
     )
     parser.add_argument("input", help="Input .docx file path")
     parser.add_argument("-o", "--output", help="Output file path (default: input_formatted.docx)")
-    parser.add_argument("--model", default="claude-sonnet-4-5-20251001",
-                        help="Claude model to use (default: claude-sonnet-4-5-20251001)")
+    parser.add_argument("--model", default="claude-sonnet-4-6",
+                        help="Claude model to use (default: claude-sonnet-4-6)")
     parser.add_argument("--authors", nargs="+",
                         help="Author names (e.g. --authors 'Gheorghe Badea' 'George Naghiu')")
     parser.add_argument("--title-en",
