@@ -378,7 +378,7 @@ HTML = """<!DOCTYPE html>
             resolve();
           }
         } catch (e) { /* retry */ }
-      }, 4000);
+      }, 2000);
     });
 
     // Move to next file
@@ -435,7 +435,7 @@ def format_doc():
 
 def run_formatter(job_id, input_path, output_path, authors, title_en):
     PYTHON = sys.executable
-    cmd = [PYTHON, "formatter.py", input_path, "-o", output_path]
+    cmd = [PYTHON, "-u", "formatter.py", input_path, "-o", output_path]
     for a in authors:
         cmd += ["--authors", a]
     if title_en:
