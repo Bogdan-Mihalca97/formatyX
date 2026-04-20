@@ -172,9 +172,7 @@ Rules:
 9. Items marked with [TABLE] prefix are table content — classify as table_content unless they clearly belong to another type (e.g., a single-cell table containing the abstract should be rezumat_text)
 10. The abstract text may be inside a table cell — still classify it as rezumat_text or abstract_text based on language
 11. Paragraphs marked [in-single-cell-table] that contain equations or math expressions (with =, +, –, variables, dots) should be classified as formula; lines starting with "unde:" following a formula should be formula_legend; bold/uppercase descriptive labels at the top of formula boxes (e.g. "BILANȚ ENERGETIC — SISTEM DESCHIS (Legea I)") should be classified as formula_label
-12. [TABLE 1x2] or [TABLE 2x2] items where the content is a mathematical equation (contains =, variables, Greek letters, fractions, operators) should be classified as formula — these are formula boxes laid out as small tables, NOT data tables
-13. A data table (table_content) contains structured data with multiple rows of comparable items — if a table has only 1-2 rows and the content is a mathematical expression rather than data, classify it as formula
-14. "Cuvinte cheie:" lines contain keywords and should be classified as keywords
+11. "Cuvinte cheie:" lines contain keywords and should be classified as keywords
 
 Respond with a JSON array where each element is:
 {"idx": paragraph_index, "type": "section_type"}
@@ -512,14 +510,20 @@ def restore_diacritics(paragraphs, model="claude-sonnet-4-6"):
     """Use Claude to restore missing Romanian diacritics in all paragraph texts,
     including table cell contents stored in p['table_data'].
 
-    Encodes every text chunk as a unique key|||text line, sends in one batch,
-    then writes corrected values back in-place.
+    Processes in batches of 80 entries to avoid hitting output token limits.
     """
     client = anthropic.Anthropic()
 
-    # Build a flat list of (key, text) for all text chunks:
-    # - regular paragraphs:  key = "p{idx}"
-    # - table cells:         key = "t{idx}_{row}_{col}"
+    SYSTEM = (
+        "You are a Romanian text corrector. Your only job is to restore missing "
+        "diacritics (ă, â, î, ș, ț and their uppercase variants) in Romanian text. "
+        "Do NOT change any other words, spelling, punctuation, or order. "
+        "Preserve technical terms, proper nouns, formulas, numbers, and English words exactly. "
+        "Return ONLY the corrected lines in the exact same format: key|||corrected_text. "
+        "One line per input line. No extra commentary."
+    )
+
+    # Build a flat list of (key, text) for all text chunks
     entries = []
     for p in paragraphs:
         if p["text"].strip():
@@ -533,58 +537,54 @@ def restore_diacritics(paragraphs, model="claude-sonnet-4-6"):
     if not entries:
         return paragraphs
 
-    lines = "\n".join(f"{key}|||{text}" for key, text in entries)
-    print(f"Restoring Romanian diacritics for {len(entries)} text chunks...")
+    # Process in batches to avoid output token limit
+    BATCH_SIZE = 80
+    batches = [entries[i:i + BATCH_SIZE] for i in range(0, len(entries), BATCH_SIZE)]
+    print(f"Restoring Romanian diacritics for {len(entries)} text chunks ({len(batches)} batch(es))...")
 
-    response = client.messages.create(
-        model=model,
-        max_tokens=16384,
-        system=(
-            "You are a Romanian text corrector. Your only job is to restore missing "
-            "diacritics (ă, â, î, ș, ț and their uppercase variants) in Romanian text. "
-            "Do NOT change any other words, spelling, punctuation, or order. "
-            "Preserve technical terms, proper nouns, formulas, numbers, and English words exactly. "
-            "Return ONLY the corrected lines in the exact same format: key|||corrected_text. "
-            "One line per input line. No extra commentary."
-        ),
-        messages=[{
-            "role": "user",
-            "content": f"Restore diacritics in these Romanian text lines:\n\n{lines}"
-        }]
-    )
-
-    print(f"Diacritics restoration complete. Token usage: input={response.usage.input_tokens}, output={response.usage.output_tokens}")
-
-    # Build lookup maps for fast update
     idx_to_para = {p["idx"]: p for p in paragraphs}
+    total_in, total_out = 0, 0
 
-    for line in response.content[0].text.strip().splitlines():
-        if "|||" not in line:
-            continue
-        key, _, corrected = line.partition("|||")
-        key = key.strip()
-        corrected = corrected.strip()
-        if not corrected:
-            continue
+    def apply_response(text):
+        for line in text.strip().splitlines():
+            if "|||" not in line:
+                continue
+            key, _, corrected = line.partition("|||")
+            key = key.strip()
+            corrected = corrected.strip()
+            if not corrected:
+                continue
+            if key.startswith("p"):
+                try:
+                    idx = int(key[1:])
+                    if idx in idx_to_para:
+                        idx_to_para[idx]["text"] = corrected
+                except ValueError:
+                    pass
+            elif key.startswith("t"):
+                try:
+                    parts = key[1:].split("_")
+                    idx, r_i, c_i = int(parts[0]), int(parts[1]), int(parts[2])
+                    if idx in idx_to_para:
+                        td = idx_to_para[idx].get("table_data")
+                        if td and r_i < len(td) and c_i < len(td[r_i]):
+                            td[r_i][c_i] = corrected
+                except (ValueError, IndexError):
+                    pass
 
-        if key.startswith("p"):
-            try:
-                idx = int(key[1:])
-                if idx in idx_to_para:
-                    idx_to_para[idx]["text"] = corrected
-            except ValueError:
-                pass
-        elif key.startswith("t"):
-            try:
-                parts = key[1:].split("_")
-                idx, r_i, c_i = int(parts[0]), int(parts[1]), int(parts[2])
-                if idx in idx_to_para:
-                    td = idx_to_para[idx].get("table_data")
-                    if td and r_i < len(td) and c_i < len(td[r_i]):
-                        td[r_i][c_i] = corrected
-            except (ValueError, IndexError):
-                pass
+    for i, batch in enumerate(batches):
+        lines = "\n".join(f"{key}|||{text}" for key, text in batch)
+        response = client.messages.create(
+            model=model,
+            max_tokens=16384,
+            system=SYSTEM,
+            messages=[{"role": "user", "content": f"Restore diacritics in these Romanian text lines:\n\n{lines}"}]
+        )
+        total_in += response.usage.input_tokens
+        total_out += response.usage.output_tokens
+        apply_response(response.content[0].text)
 
+    print(f"Diacritics restoration complete. Token usage: input={total_in}, output={total_out}")
     return paragraphs
 
 
@@ -1086,44 +1086,6 @@ def build_formatted_document(doc_path, section_map, paragraphs, template_path, m
     if table_infos:
         table_captions_map = generate_table_captions(table_infos, model=model)
 
-    # --- Reclassify formula boxes that were extracted as small data tables ---
-    # Must run before assign_figure_table_numbers so they aren't counted as tables.
-    _math_chars = set("=+-·×/^∑∫∂εωΦΔαβγ²³")
-    def _looks_like_formula(td):
-        flat = " ".join(cell for row in td for cell in row)
-        return sum(1 for c in flat if c in _math_chars) >= 2 and len(flat) < 400
-
-    para_by_idx_pre = {p["idx"]: p for p in paragraphs}
-    # Build caption→content and content→caption maps for pre-pass
-    _pre_cap_to_content = {}   # table_caption_idx -> table_content_idx
-    _content_to_pre_cap = {}   # table_content_idx -> table_caption_idx
-    _prev_sig_type, _prev_sig_idx = None, None
-    for p in paragraphs:
-        st = section_map.get(p["idx"])
-        if st in ("skip", "empty"):
-            continue
-        ci = p["idx"]
-        if st == "table_content" and p.get("table_data") and _prev_sig_type == "table_caption":
-            _pre_cap_to_content[_prev_sig_idx] = ci
-            _content_to_pre_cap[ci] = _prev_sig_idx
-        _prev_sig_type = st
-        _prev_sig_idx = ci
-
-    for p in paragraphs:
-        if section_map.get(p["idx"]) != "table_content":
-            continue
-        td = p.get("table_data")
-        if not td:
-            continue
-        num_rows = len(td)
-        num_cols = max(len(r) for r in td) if td else 1
-        if num_rows <= 2 and _looks_like_formula(td):
-            section_map[p["idx"]] = "formula"
-            # Also skip any paired table_caption so it doesn't render as "Tabel X."
-            paired_cap = _content_to_pre_cap.get(p["idx"])
-            if paired_cap is not None:
-                section_map[paired_cap] = "skip"
-
     # --- Auto-reference insertion for figures and tables ---
     figure_numbers, table_numbers, formula_numbers, post_caption_map = assign_figure_table_numbers(paragraphs, section_map)
 
@@ -1417,14 +1379,7 @@ def build_formatted_document(doc_path, section_map, paragraphs, template_path, m
 
         if sec_type == "formula":
             formula_num = formula_numbers.get(idx)
-            # If this was a formula box stored as table_data, join cells as text
-            if p_info.get("table_data"):
-                for row in p_info["table_data"]:
-                    row_text = " ".join(cell for cell in row if cell.strip())
-                    if row_text.strip():
-                        add_formula_paragraph(row_text, centered=True, formula_num=formula_num)
-            else:
-                add_formula_paragraph(text, centered=True, formula_num=formula_num)
+            add_formula_paragraph(text, centered=True, formula_num=formula_num)
             prev_type = sec_type
             continue
 
@@ -1463,7 +1418,6 @@ def build_formatted_document(doc_path, section_map, paragraphs, template_path, m
             if table_data:
                 num_rows = len(table_data)
                 num_cols = max(len(row) for row in table_data) if table_data else 1
-
 
                 # Determine caption source: pre-caption (prev_type), post-caption, or auto-generate
                 has_pre_caption = (prev_type == "table_caption")
