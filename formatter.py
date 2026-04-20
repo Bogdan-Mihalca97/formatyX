@@ -1086,6 +1086,44 @@ def build_formatted_document(doc_path, section_map, paragraphs, template_path, m
     if table_infos:
         table_captions_map = generate_table_captions(table_infos, model=model)
 
+    # --- Reclassify formula boxes that were extracted as small data tables ---
+    # Must run before assign_figure_table_numbers so they aren't counted as tables.
+    _math_chars = set("=+-·×/^∑∫∂εωΦΔαβγ²³")
+    def _looks_like_formula(td):
+        flat = " ".join(cell for row in td for cell in row)
+        return sum(1 for c in flat if c in _math_chars) >= 2 and len(flat) < 400
+
+    para_by_idx_pre = {p["idx"]: p for p in paragraphs}
+    # Build caption→content and content→caption maps for pre-pass
+    _pre_cap_to_content = {}   # table_caption_idx -> table_content_idx
+    _content_to_pre_cap = {}   # table_content_idx -> table_caption_idx
+    _prev_sig_type, _prev_sig_idx = None, None
+    for p in paragraphs:
+        st = section_map.get(p["idx"])
+        if st in ("skip", "empty"):
+            continue
+        ci = p["idx"]
+        if st == "table_content" and p.get("table_data") and _prev_sig_type == "table_caption":
+            _pre_cap_to_content[_prev_sig_idx] = ci
+            _content_to_pre_cap[ci] = _prev_sig_idx
+        _prev_sig_type = st
+        _prev_sig_idx = ci
+
+    for p in paragraphs:
+        if section_map.get(p["idx"]) != "table_content":
+            continue
+        td = p.get("table_data")
+        if not td:
+            continue
+        num_rows = len(td)
+        num_cols = max(len(r) for r in td) if td else 1
+        if num_rows <= 2 and _looks_like_formula(td):
+            section_map[p["idx"]] = "formula"
+            # Also skip any paired table_caption so it doesn't render as "Tabel X."
+            paired_cap = _content_to_pre_cap.get(p["idx"])
+            if paired_cap is not None:
+                section_map[paired_cap] = "skip"
+
     # --- Auto-reference insertion for figures and tables ---
     figure_numbers, table_numbers, formula_numbers, post_caption_map = assign_figure_table_numbers(paragraphs, section_map)
 
@@ -1379,7 +1417,14 @@ def build_formatted_document(doc_path, section_map, paragraphs, template_path, m
 
         if sec_type == "formula":
             formula_num = formula_numbers.get(idx)
-            add_formula_paragraph(text, centered=True, formula_num=formula_num)
+            # If this was a formula box stored as table_data, join cells as text
+            if p_info.get("table_data"):
+                for row in p_info["table_data"]:
+                    row_text = " ".join(cell for cell in row if cell.strip())
+                    if row_text.strip():
+                        add_formula_paragraph(row_text, centered=True, formula_num=formula_num)
+            else:
+                add_formula_paragraph(text, centered=True, formula_num=formula_num)
             prev_type = sec_type
             continue
 
@@ -1419,22 +1464,6 @@ def build_formatted_document(doc_path, section_map, paragraphs, template_path, m
                 num_rows = len(table_data)
                 num_cols = max(len(row) for row in table_data) if table_data else 1
 
-                # Detect formula boxes misclassified as tables:
-                # small tables (≤2 rows) whose first cell looks like a math expression
-                def _looks_like_formula(td):
-                    flat = " ".join(cell for row in td for cell in row)
-                    math_chars = sum(flat.count(c) for c in "=+-·×/^∑∫∂εωΦΔαβγ")
-                    return math_chars >= 2 and len(flat) < 300
-
-                if num_rows <= 2 and _looks_like_formula(table_data):
-                    # Treat each row as a formula line
-                    for row in table_data:
-                        formula_text = " ".join(cell for cell in row if cell.strip())
-                        if formula_text.strip():
-                            formula_num = formula_numbers.get(idx)
-                            add_formula_paragraph(formula_text, centered=True, formula_num=formula_num)
-                    prev_type = sec_type
-                    continue
 
                 # Determine caption source: pre-caption (prev_type), post-caption, or auto-generate
                 has_pre_caption = (prev_type == "table_caption")
