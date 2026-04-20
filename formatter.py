@@ -172,7 +172,9 @@ Rules:
 9. Items marked with [TABLE] prefix are table content — classify as table_content unless they clearly belong to another type (e.g., a single-cell table containing the abstract should be rezumat_text)
 10. The abstract text may be inside a table cell — still classify it as rezumat_text or abstract_text based on language
 11. Paragraphs marked [in-single-cell-table] that contain equations or math expressions (with =, +, –, variables, dots) should be classified as formula; lines starting with "unde:" following a formula should be formula_legend; bold/uppercase descriptive labels at the top of formula boxes (e.g. "BILANȚ ENERGETIC — SISTEM DESCHIS (Legea I)") should be classified as formula_label
-11. "Cuvinte cheie:" lines contain keywords and should be classified as keywords
+12. [TABLE 1x2] or [TABLE 2x2] items where the content is a mathematical equation (contains =, variables, Greek letters, fractions, operators) should be classified as formula — these are formula boxes laid out as small tables, NOT data tables
+13. A data table (table_content) contains structured data with multiple rows of comparable items — if a table has only 1-2 rows and the content is a mathematical expression rather than data, classify it as formula
+14. "Cuvinte cheie:" lines contain keywords and should be classified as keywords
 
 Respond with a JSON array where each element is:
 {"idx": paragraph_index, "type": "section_type"}
@@ -1416,6 +1418,23 @@ def build_formatted_document(doc_path, section_map, paragraphs, template_path, m
             if table_data:
                 num_rows = len(table_data)
                 num_cols = max(len(row) for row in table_data) if table_data else 1
+
+                # Detect formula boxes misclassified as tables:
+                # small tables (≤2 rows) whose first cell looks like a math expression
+                def _looks_like_formula(td):
+                    flat = " ".join(cell for row in td for cell in row)
+                    math_chars = sum(flat.count(c) for c in "=+-·×/^∑∫∂εωΦΔαβγ")
+                    return math_chars >= 2 and len(flat) < 300
+
+                if num_rows <= 2 and _looks_like_formula(table_data):
+                    # Treat each row as a formula line
+                    for row in table_data:
+                        formula_text = " ".join(cell for cell in row if cell.strip())
+                        if formula_text.strip():
+                            formula_num = formula_numbers.get(idx)
+                            add_formula_paragraph(formula_text, centered=True, formula_num=formula_num)
+                    prev_type = sec_type
+                    continue
 
                 # Determine caption source: pre-caption (prev_type), post-caption, or auto-generate
                 has_pre_caption = (prev_type == "table_caption")
