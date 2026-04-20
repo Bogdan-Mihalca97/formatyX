@@ -32,6 +32,14 @@ import anthropic
 from create_template import create_template
 
 
+# Normalize legacy cedilla diacritics to correct comma-below Romanian characters
+_DIACRITIC_MAP = str.maketrans("şţŞŢ", "șțȘȚ")
+
+def fix_diacritics(text: str) -> str:
+    """Replace cedilla s/t (ş ţ) with correct comma-below Romanian (ș ț)."""
+    return text.translate(_DIACRITIC_MAP)
+
+
 # Romanian prepositions/conjunctions/function words kept lowercase in title case
 _RO_LOWERCASE_WORDS = {
     'și', 'si', 'de', 'a', 'în', 'in', 'pe', 'cu', 'la', 'din', 'sau', 'ori',
@@ -304,7 +312,7 @@ def extract_paragraphs(doc_path):
                 if t_elem.text:
                     text_parts.append(t_elem.text)
 
-        text = ''.join(text_parts).strip()
+        text = fix_diacritics(''.join(text_parts).strip())
 
         # Get paragraph properties
         alignment = "None"
