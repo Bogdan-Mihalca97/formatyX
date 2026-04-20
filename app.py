@@ -436,8 +436,8 @@ def format_doc():
 def run_formatter(job_id, input_path, output_path, authors, title_en):
     PYTHON = sys.executable
     cmd = [PYTHON, "-u", "formatter.py", input_path, "-o", output_path]
-    for a in authors:
-        cmd += ["--authors", a]
+    if authors:
+        cmd += ["--authors"] + authors
     if title_en:
         cmd += ["--title-en", title_en]
 
