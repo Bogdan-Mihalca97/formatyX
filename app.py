@@ -378,7 +378,7 @@ HTML = """<!DOCTYPE html>
             resolve();
           }
         } catch (e) { /* retry */ }
-      }, 1500);
+      }, 4000);
     });
 
     // Move to next file
