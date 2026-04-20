@@ -506,6 +506,59 @@ def build_claude_message(paragraphs):
     return "\n".join(lines)
 
 
+def restore_diacritics(paragraphs, model="claude-sonnet-4-6"):
+    """Use Claude to restore missing Romanian diacritics in all paragraph texts.
+
+    Sends all non-empty texts in one batch. Returns the paragraphs list with
+    'text' fields updated in-place.
+    """
+    client = anthropic.Anthropic()
+
+    # Collect non-empty paragraphs
+    candidates = [(p["idx"], p["text"]) for p in paragraphs if p["text"].strip()]
+    if not candidates:
+        return paragraphs
+
+    # Build numbered list for Claude
+    lines = "\n".join(f"{idx}|||{text}" for idx, text in candidates)
+
+    print(f"Restoring Romanian diacritics for {len(candidates)} paragraphs...")
+
+    response = client.messages.create(
+        model=model,
+        max_tokens=16384,
+        system=(
+            "You are a Romanian text corrector. Your only job is to restore missing "
+            "diacritics (ă, â, î, ș, ț and their uppercase variants) in Romanian text. "
+            "Do NOT change any other words, spelling, punctuation, or order. "
+            "Preserve technical terms, proper nouns, formulas, numbers, and English words exactly. "
+            "Return ONLY the corrected lines in the exact same format: idx|||corrected_text. "
+            "One line per input line. No extra commentary."
+        ),
+        messages=[{
+            "role": "user",
+            "content": f"Restore diacritics in these Romanian text lines:\n\n{lines}"
+        }]
+    )
+
+    print(f"Diacritics restoration complete. Token usage: input={response.usage.input_tokens}, output={response.usage.output_tokens}")
+
+    # Parse response and update paragraphs
+    idx_to_para = {p["idx"]: p for p in paragraphs}
+    for line in response.content[0].text.strip().splitlines():
+        if "|||" in line:
+            parts = line.split("|||", 1)
+            try:
+                idx = int(parts[0].strip())
+                corrected = parts[1].strip()
+                if idx in idx_to_para and corrected:
+                    idx_to_para[idx]["text"] = corrected
+            except (ValueError, IndexError):
+                pass
+
+    return paragraphs
+
+
 def classify_with_claude(paragraphs, model="claude-sonnet-4-6"):
     """Send paragraphs to Claude for section classification."""
     client = anthropic.Anthropic()  # Uses ANTHROPIC_API_KEY env var
@@ -1507,7 +1560,10 @@ def main():
     paragraphs, doc = extract_paragraphs(str(input_path))
     print(f"Extracted {len(paragraphs)} paragraphs")
 
-    # Step 2: Classify with Claude
+    # Step 2: Restore Romanian diacritics
+    paragraphs = restore_diacritics(paragraphs, model=args.model)
+
+    # Step 3: Classify with Claude
     section_map = classify_with_claude(paragraphs, model=args.model)
 
     # Show classification if requested
