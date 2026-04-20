@@ -507,22 +507,32 @@ def build_claude_message(paragraphs):
 
 
 def restore_diacritics(paragraphs, model="claude-sonnet-4-6"):
-    """Use Claude to restore missing Romanian diacritics in all paragraph texts.
+    """Use Claude to restore missing Romanian diacritics in all paragraph texts,
+    including table cell contents stored in p['table_data'].
 
-    Sends all non-empty texts in one batch. Returns the paragraphs list with
-    'text' fields updated in-place.
+    Encodes every text chunk as a unique key|||text line, sends in one batch,
+    then writes corrected values back in-place.
     """
     client = anthropic.Anthropic()
 
-    # Collect non-empty paragraphs
-    candidates = [(p["idx"], p["text"]) for p in paragraphs if p["text"].strip()]
-    if not candidates:
+    # Build a flat list of (key, text) for all text chunks:
+    # - regular paragraphs:  key = "p{idx}"
+    # - table cells:         key = "t{idx}_{row}_{col}"
+    entries = []
+    for p in paragraphs:
+        if p["text"].strip():
+            entries.append((f"p{p['idx']}", p["text"]))
+        if p.get("table_data"):
+            for r_i, row in enumerate(p["table_data"]):
+                for c_i, cell in enumerate(row):
+                    if cell.strip():
+                        entries.append((f"t{p['idx']}_{r_i}_{c_i}", cell))
+
+    if not entries:
         return paragraphs
 
-    # Build numbered list for Claude
-    lines = "\n".join(f"{idx}|||{text}" for idx, text in candidates)
-
-    print(f"Restoring Romanian diacritics for {len(candidates)} paragraphs...")
+    lines = "\n".join(f"{key}|||{text}" for key, text in entries)
+    print(f"Restoring Romanian diacritics for {len(entries)} text chunks...")
 
     response = client.messages.create(
         model=model,
@@ -532,7 +542,7 @@ def restore_diacritics(paragraphs, model="claude-sonnet-4-6"):
             "diacritics (ă, â, î, ș, ț and their uppercase variants) in Romanian text. "
             "Do NOT change any other words, spelling, punctuation, or order. "
             "Preserve technical terms, proper nouns, formulas, numbers, and English words exactly. "
-            "Return ONLY the corrected lines in the exact same format: idx|||corrected_text. "
+            "Return ONLY the corrected lines in the exact same format: key|||corrected_text. "
             "One line per input line. No extra commentary."
         ),
         messages=[{
@@ -543,16 +553,33 @@ def restore_diacritics(paragraphs, model="claude-sonnet-4-6"):
 
     print(f"Diacritics restoration complete. Token usage: input={response.usage.input_tokens}, output={response.usage.output_tokens}")
 
-    # Parse response and update paragraphs
+    # Build lookup maps for fast update
     idx_to_para = {p["idx"]: p for p in paragraphs}
+
     for line in response.content[0].text.strip().splitlines():
-        if "|||" in line:
-            parts = line.split("|||", 1)
+        if "|||" not in line:
+            continue
+        key, _, corrected = line.partition("|||")
+        key = key.strip()
+        corrected = corrected.strip()
+        if not corrected:
+            continue
+
+        if key.startswith("p"):
             try:
-                idx = int(parts[0].strip())
-                corrected = parts[1].strip()
-                if idx in idx_to_para and corrected:
+                idx = int(key[1:])
+                if idx in idx_to_para:
                     idx_to_para[idx]["text"] = corrected
+            except ValueError:
+                pass
+        elif key.startswith("t"):
+            try:
+                parts = key[1:].split("_")
+                idx, r_i, c_i = int(parts[0]), int(parts[1]), int(parts[2])
+                if idx in idx_to_para:
+                    td = idx_to_para[idx].get("table_data")
+                    if td and r_i < len(td) and c_i < len(td[r_i]):
+                        td[r_i][c_i] = corrected
             except (ValueError, IndexError):
                 pass
 
