@@ -17,9 +17,9 @@ from docx.oxml import parse_xml
 
 FONT_NAME = "Times New Roman"
 
-# Page: A5
-PAGE_WIDTH = Mm(148)
-PAGE_HEIGHT = Mm(210)
+# Page: ISO B5
+PAGE_WIDTH = Mm(176)
+PAGE_HEIGHT = Mm(250)
 MARGIN = Mm(20)
 HEADER_FOOTER_DIST = Mm(12.7)
 TAB_INDENT = Mm(12.7)

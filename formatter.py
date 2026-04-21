@@ -516,9 +516,12 @@ def restore_diacritics(paragraphs, model="claude-sonnet-4-6"):
 
     SYSTEM = (
         "You are a Romanian text corrector. Your only job is to restore missing "
-        "diacritics (ă, â, î, ș, ț and their uppercase variants) in Romanian text. "
+        "diacritics (ă, â, î, ș, ț and their uppercase variants Ă, Â, Î, Ș, Ț) in Romanian text. "
+        "This includes ALL-CAPS Romanian text — for example 'BIOMASA' → 'BIOMASĂ', "
+        "'INTEGRAREA' → 'INTEGRAREA', 'BILANT' → 'BILANȚ', 'SI' → 'ȘI', 'IN' → 'ÎN'. "
         "Do NOT change any other words, spelling, punctuation, or order. "
-        "Preserve technical terms, proper nouns, formulas, numbers, and English words exactly. "
+        "Preserve technical terms, acronyms, product names, formulas, numbers, and English words exactly. "
+        "You MUST return every input line — even if unchanged. "
         "Return ONLY the corrected lines in the exact same format: key|||corrected_text. "
         "One line per input line. No extra commentary."
     )
@@ -582,7 +585,12 @@ def restore_diacritics(paragraphs, model="claude-sonnet-4-6"):
         )
         total_in += response.usage.input_tokens
         total_out += response.usage.output_tokens
+        sent_keys = {key for key, _ in batch}
         apply_response(response.content[0].text)
+        returned_keys = {line.partition("|||")[0].strip() for line in response.content[0].text.strip().splitlines() if "|||" in line}
+        missed = sent_keys - returned_keys
+        if missed:
+            print(f"  Batch {i+1}: {len(missed)} entries not returned by Claude: {sorted(missed)[:5]}{'...' if len(missed)>5 else ''}")
 
     print(f"Diacritics restoration complete. Token usage: input={total_in}, output={total_out}")
     return paragraphs
