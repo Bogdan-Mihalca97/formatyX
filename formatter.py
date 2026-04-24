@@ -1060,8 +1060,9 @@ Translate the given Romanian abstract text to English.
 def build_formatted_document(doc_path, section_map, paragraphs, template_path, model="claude-sonnet-4-6", authors=None, title_en=None):
     """Build the formatted output document using the template styles."""
 
-    # Create fresh template
-    template_path = create_template(template_path)
+    # Reuse existing template if present, otherwise create it once
+    if not os.path.exists(template_path):
+        create_template(template_path)
     out_doc = Document(template_path)
 
     # Remove any existing content
