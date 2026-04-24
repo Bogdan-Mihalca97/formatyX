@@ -236,6 +236,8 @@ button.download-btn:hover { background: #15803d; }
 .dot-done { background: #22c55e; }
 .dot-generating { background: #6366f1; animation: pulse 1s infinite; }
 .dot-pending { background: #d1d5db; }
+.dot-na { background: #d1d5db; }
+.card-na { opacity: 0.65; }
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 </style>
 </head>
@@ -373,28 +375,61 @@ function renderNewSections(sections) {
   }
 }
 
+function isNA(text) {
+  return !text || text.trim().toUpperCase() === 'N/A';
+}
+
 function appendSectionCard(key, label, text) {
   const wrap = document.getElementById('sections-wrap');
-  const rows = Math.max(4, Math.ceil(text.length / 80));
+  const na = isNA(text);
 
   const card = document.createElement('div');
-  card.className = 'section-card';
+  card.className = 'section-card' + (na ? ' card-na' : '');
   card.id = 'card-' + key;
-  card.innerHTML = `
-    <div class="card-header">
-      <span class="status-dot dot-done" id="dot-${key}"></span>
-      <span class="section-label">${label}</span>
-      <div class="card-actions">
-        <button class="secondary" onclick="regenerateSection('${key}')">Regenerează</button>
-        <button class="secondary" onclick="grammarCheck('${key}')">Verifică gramatică</button>
+
+  if (na) {
+    card.innerHTML = `
+      <div class="card-header">
+        <span class="status-dot dot-na" id="dot-${key}"></span>
+        <span class="section-label" style="color:#9ca3af">${label}</span>
+        <span style="font-size:0.74rem;color:#9ca3af;margin-left:auto;margin-right:8px">Secțiune omisă (N/A)</span>
+        <button class="secondary" onclick="regenerateSection('${key}')">Generează</button>
       </div>
-    </div>
-    <div class="card-body">
-      <textarea class="section-textarea" id="ta-${key}" rows="${rows}">${escHtml(text)}</textarea>
+      <textarea class="section-textarea" id="ta-${key}" rows="1" style="display:none">N/A</textarea>
       <div class="grammar-results" id="gr-${key}"></div>
-    </div>
-  `;
+    `;
+  } else {
+    const rows = Math.max(4, Math.ceil(text.length / 80));
+    card.innerHTML = `
+      <div class="card-header">
+        <span class="status-dot dot-done" id="dot-${key}"></span>
+        <span class="section-label">${label}</span>
+        <div class="card-actions">
+          <button class="secondary" onclick="regenerateSection('${key}')">Regenerează</button>
+          <button class="secondary" onclick="grammarCheck('${key}')">Verifică gramatică</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <textarea class="section-textarea" id="ta-${key}" rows="${rows}">${escHtml(text)}</textarea>
+        <div class="grammar-results" id="gr-${key}"></div>
+      </div>
+    `;
+  }
   wrap.appendChild(card);
+}
+
+function refreshCard(key, text) {
+  const existing = document.getElementById('card-' + key);
+  if (existing) existing.remove();
+  renderedKeys.delete(key);
+  appendSectionCard(key, SECTIONS.find(s => s.key === key).label, text);
+  // Move card to correct position
+  const wrap = document.getElementById('sections-wrap');
+  const cards = [...wrap.children];
+  const order = SECTIONS.map(s => s.key);
+  cards.sort((a, b) => order.indexOf(a.id.replace('card-','')) - order.indexOf(b.id.replace('card-','')));
+  cards.forEach(c => wrap.appendChild(c));
+  renderedKeys.add(key);
 }
 
 function escHtml(t) {
@@ -422,17 +457,11 @@ function regenerateSection(key) {
   })
   .then(r => r.json())
   .then(data => {
-    if (data.error) { ta.value = '[Eroare: ' + data.error + ']'; }
-    else { ta.value = data.text; }
-    ta.className = 'section-textarea';
-    const rows = Math.max(4, Math.ceil(ta.value.length / 80));
-    ta.rows = rows;
-    document.getElementById('dot-' + key).className = 'status-dot dot-done';
+    const newText = data.error ? '[Eroare: ' + data.error + ']' : data.text;
+    refreshCard(key, newText);
   })
-  .catch(e => {
-    ta.value = '[Eroare rețea]';
-    ta.className = 'section-textarea';
-    document.getElementById('dot-' + key).className = 'status-dot dot-done';
+  .catch(() => {
+    refreshCard(key, '[Eroare rețea]');
   });
 }
 

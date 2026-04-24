@@ -13,10 +13,12 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 load_dotenv()
 
+# Sections marked optional=True will be skipped if Claude returns "N/A"
 SECTIONS = [
     {
         "key": "title",
         "label": "Titlu",
+        "optional": False,
         "max_tokens": 120,
         "instruction": (
             "Generează un titlu academic clar, precis și concis în limba română pentru această lucrare de cercetare. "
@@ -27,6 +29,7 @@ SECTIONS = [
     {
         "key": "rezumat",
         "label": "Rezumat",
+        "optional": False,
         "max_tokens": 500,
         "instruction": (
             "Scrie un rezumat academic de aproximativ 200-250 de cuvinte în limba română. "
@@ -38,6 +41,7 @@ SECTIONS = [
     {
         "key": "keywords_ro",
         "label": "Cuvinte cheie",
+        "optional": False,
         "max_tokens": 120,
         "instruction": (
             "Generează 5-7 cuvinte cheie relevante în română pentru această lucrare. "
@@ -45,54 +49,159 @@ SECTIONS = [
         ),
     },
     {
+        "key": "nomenclature",
+        "label": "Nomenclatură",
+        "optional": True,
+        "max_tokens": 500,
+        "instruction": (
+            "Dacă lucrarea implică simboluri matematice, mărimi fizice sau abrevieri tehnice specifice, "
+            "listează-le ca 'Simbol — Definiție' (câte unul pe linie). "
+            "Dacă lucrarea nu necesită o nomenclatură specifică sau nu se pot genera simboluri relevante "
+            "pentru subiectul dat, returnează exact 'N/A'. "
+            "Nu include texte introductive sau anteturi."
+        ),
+    },
+    {
         "key": "introduction",
         "label": "1. Introducere",
+        "optional": False,
         "max_tokens": 900,
         "instruction": (
             "Scrie introducerea lucrării în română (450-550 cuvinte). "
             "Include: contextul teoretic și starea artei, motivația cercetării, "
             "relevanța temei în domeniu, obiectivele specifice și structura lucrării. "
-            "Folosește stil academic formal, voce activă, fără referințe la 'această lucrare' sau 'acest studiu'. "
-            "Nu include anteturi sau formatare suplimentară. Returnează DOAR conținutul introducerii."
+            "Folosește stil academic formal. Nu include anteturi. Returnează DOAR conținutul introducerii."
+        ),
+    },
+    {
+        "key": "relevance",
+        "label": "2. Relevanța cercetării",
+        "optional": False,
+        "max_tokens": 700,
+        "instruction": (
+            "Descrie relevanța practică și teoretică a cercetării în română (300-400 cuvinte). "
+            "Include: importanța domeniului, impactul potențial al rezultatelor, "
+            "contribuțiile originale față de literatura existentă. "
+            "Nu include anteturi. Returnează DOAR conținutul secțiunii."
         ),
     },
     {
         "key": "methodology",
-        "label": "2. Metodologie",
+        "label": "3. Metodologie (Model Matematic)",
+        "optional": False,
         "max_tokens": 900,
         "instruction": (
-            "Descrie metodologia cercetării în română (450-550 cuvinte). "
-            "Include: modelul matematic sau cadrul teoretic, ipotezele și limitările, "
-            "parametrii tehnici, procedurile de colectare și analiză a datelor. "
+            "Descrie metodologia și modelul matematic al cercetării în română (450-550 cuvinte). "
+            "Include: ecuații și relații matematice relevante, ipotezele și limitările modelului, "
+            "parametrii tehnici și condițiile de frontieră. "
+            "Nu include anteturi. Returnează DOAR conținutul metodologiei."
+        ),
+    },
+    {
+        "key": "materials_methods",
+        "label": "4. Materiale și Metode",
+        "optional": False,
+        "max_tokens": 800,
+        "instruction": (
+            "Descrie materialele, echipamentele și procedurile utilizate în română (400-500 cuvinte). "
+            "Include: specificațiile tehnice ale materialelor/echipamentelor, "
+            "procedurile de colectare și procesare a datelor, configurația experimentală. "
             "Folosește voce pasivă și limbaj tehnic precis. "
-            "Nu include anteturi sau formatare suplimentară. Returnează DOAR conținutul metodologiei."
+            "Nu include anteturi. Returnează DOAR conținutul secțiunii."
+        ),
+    },
+    {
+        "key": "technology_overview",
+        "label": "5. Prezentare Tehnologică",
+        "optional": True,
+        "max_tokens": 800,
+        "instruction": (
+            "Dacă lucrarea implică o tehnologie specifică, prezintă o privire de ansamblu asupra "
+            "tehnologiilor relevante în română (350-450 cuvinte): principii de funcționare, "
+            "avantaje/dezavantaje comparativ cu alternativele, stadiul actual al tehnologiei. "
+            "Dacă subiectul nu implică o componentă tehnologică distinctă față de metodologie, "
+            "returnează exact 'N/A'. Nu include anteturi."
+        ),
+    },
+    {
+        "key": "case_study",
+        "label": "6. Studiu de Caz",
+        "optional": True,
+        "max_tokens": 900,
+        "instruction": (
+            "Dacă lucrarea include un studiu de caz specific sau o aplicație concretă, "
+            "descrie-l în română (450-550 cuvinte): contextul specific, datele de intrare, "
+            "rezultatele aplicației practice, analiza performanței. "
+            "Dacă subiectul nu se pretează unui studiu de caz distinct față de rezultate, "
+            "returnează exact 'N/A'. Nu include anteturi."
         ),
     },
     {
         "key": "results",
-        "label": "3. Rezultate și discuții",
+        "label": "7. Rezultate și Discuții",
+        "optional": False,
         "max_tokens": 900,
         "instruction": (
             "Prezintă și discută rezultatele obținute în română (450-550 cuvinte). "
-            "Include: prezentarea datelor principale, analiza comparativă, interpretarea rezultatelor, "
-            "implicațiile practice și teoretice. Conectează rezultatele cu obiectivele din introducere. "
-            "Nu include anteturi sau formatare suplimentară. Returnează DOAR conținutul secțiunii."
+            "Include: prezentarea datelor principale, analiza comparativă, "
+            "interpretarea rezultatelor în raport cu obiectivele, implicațiile practice. "
+            "Nu include anteturi. Returnează DOAR conținutul secțiunii."
+        ),
+    },
+    {
+        "key": "standards",
+        "label": "8. Standarde și Reglementări",
+        "optional": True,
+        "max_tokens": 700,
+        "instruction": (
+            "Dacă lucrarea este relevantă pentru standarde tehnice, reglementări sau norme specifice, "
+            "discută-le în română (300-400 cuvinte): standardele aplicabile, cerințele de conformitate, "
+            "implicațiile pentru proiectare sau implementare. "
+            "Dacă nu există standarde specific aplicabile subiectului, returnează exact 'N/A'. "
+            "Nu include anteturi."
+        ),
+    },
+    {
+        "key": "future_challenges",
+        "label": "9. Provocări Viitoare",
+        "optional": False,
+        "max_tokens": 700,
+        "instruction": (
+            "Identifică și discută provocările viitoare și direcțiile de cercetare în română (300-400 cuvinte). "
+            "Include: limitările actuale ale cercetării, oportunități de îmbunătățire, "
+            "direcții viitoare de cercetare și dezvoltare. "
+            "Nu include anteturi. Returnează DOAR conținutul secțiunii."
+        ),
+    },
+    {
+        "key": "environmental",
+        "label": "10. Sustenabilitate și Impact de Mediu",
+        "optional": True,
+        "max_tokens": 700,
+        "instruction": (
+            "Dacă lucrarea are implicații de mediu sau sustenabilitate relevante, "
+            "analizează-le în română (300-400 cuvinte): impactul de mediu al soluțiilor propuse, "
+            "beneficiile de sustenabilitate, amprenta de carbon sau eficiența energetică. "
+            "Dacă subiectul nu are o componentă de mediu semnificativă, returnează exact 'N/A'. "
+            "Nu include anteturi."
         ),
     },
     {
         "key": "conclusions",
-        "label": "4. Concluzii",
+        "label": "11. Concluzii",
+        "optional": False,
         "max_tokens": 500,
         "instruction": (
             "Scrie concluziile lucrării în română (200-280 cuvinte). "
-            "Sintetizează: principalele descoperiri, contribuțiile originale, limitările cercetării "
-            "și direcțiile viitoare de cercetare. "
-            "Nu include anteturi sau formatare suplimentară. Returnează DOAR textul concluziilor."
+            "Sintetizează: principalele descoperiri, contribuțiile originale, "
+            "limitările cercetării și recomandările pentru viitor. "
+            "Nu include anteturi. Returnează DOAR textul concluziilor."
         ),
     },
     {
         "key": "title_en",
         "label": "Title (EN)",
+        "optional": False,
         "max_tokens": 120,
         "instruction": (
             "Translate the Romanian paper title into English. "
@@ -102,6 +211,7 @@ SECTIONS = [
     {
         "key": "abstract_en",
         "label": "Abstract (EN)",
+        "optional": False,
         "max_tokens": 500,
         "instruction": (
             "Translate the Romanian abstract (Rezumat) into English (200-250 words). "
@@ -111,6 +221,7 @@ SECTIONS = [
     {
         "key": "keywords_en",
         "label": "Keywords (EN)",
+        "optional": False,
         "max_tokens": 120,
         "instruction": (
             "Translate the Romanian keywords into English. "
@@ -120,9 +231,10 @@ SECTIONS = [
     {
         "key": "references",
         "label": "Bibliografie",
-        "max_tokens": 800,
+        "optional": False,
+        "max_tokens": 900,
         "instruction": (
-            "Generează 10-12 referințe bibliografice relevante și realiste în format IEEE pentru această lucrare. "
+            "Generează 10-14 referințe bibliografice relevante și realiste în format IEEE pentru această lucrare. "
             "Referințele trebuie să fie din domeniul temei cercetate, publicate în reviste sau conferințe recunoscute. "
             "Returnează DOAR lista numerotată de referințe, fără alte texte."
         ),
@@ -134,19 +246,21 @@ SECTION_KEYS = [s["key"] for s in SECTIONS]
 
 SYSTEM_PROMPT = (
     "Ești un expert în redactarea lucrărilor academice românești pentru conferințe științifice de inginerie și tehnologie. "
-    "Scrii în stil academic formal, precis și coerent. Mențin consistența între secțiuni. "
+    "Scrii în stil academic formal, precis și coerent. Menții consistența între secțiuni. "
     "Folosești terminologie tehnică corectă și referințe la standarde internaționale când este cazul. "
-    "Nu adaugi niciodată anteturi, prefixe sau comentarii — returnezi DOAR conținutul cerut."
+    "Nu adaugi niciodată anteturi, prefixe sau comentarii — returnezi DOAR conținutul cerut. "
+    "Dacă o secțiune opțională nu este aplicabilă, returnezi exact 'N/A'."
 )
 
 
 def _build_context(generated: dict) -> str:
-    """Build a context string from already-generated sections."""
+    """Build a context string from already-generated sections (excluding N/A ones)."""
     parts = []
     for key in SECTION_KEYS:
-        if key in generated and generated[key]:
+        text = generated.get(key, "")
+        if text and text.strip() != "N/A":
             label = SECTION_MAP[key]["label"]
-            parts.append(f"[{label}]\n{generated[key]}")
+            parts.append(f"[{label}]\n{text}")
     return "\n\n".join(parts)
 
 
@@ -163,7 +277,7 @@ def generate_section(key: str, topic: str, domain: str, objectives: str,
     user_msg = (
         f"Subiect lucrare: {topic}\n"
         f"Domeniu: {domain}\n"
-        f"Obiective cercetare: {objectives}\n"
+        f"Obiective cercetare: {objectives or 'nespecificate'}\n"
         f"Cuvinte cheie sugerate: {keywords or 'nespecificate'}"
         f"{context_block}\n\n"
         f"Sarcină: {section['instruction']}"
@@ -175,11 +289,16 @@ def generate_section(key: str, topic: str, domain: str, objectives: str,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_msg}],
     )
-    return response.content[0].text.strip()
+    text = response.content[0].text.strip()
+
+    # Treat near-empty or explicit N/A as not applicable
+    if section.get("optional") and text.upper() in ("N/A", "NA", "N/A.", "-", ""):
+        return "N/A"
+    return text
 
 
 def check_grammar(text: str, language: str = "ro-RO") -> list[dict]:
-    """Check grammar using LanguageTool free API. Returns list of issues."""
+    """Check grammar using LanguageTool free API."""
     try:
         resp = requests.post(
             "https://api.languagetool.org/v2/check",
@@ -210,8 +329,6 @@ def build_docx(paper: dict, output_path: str):
         create_template("template_conference.docx")
 
     doc = Document("template_conference.docx")
-
-    # Remove default empty paragraph
     for p in doc.paragraphs:
         p._element.getparent().remove(p._element)
 
@@ -231,76 +348,101 @@ def build_docx(paper: dict, output_path: str):
     def blank():
         add("", style="Normal")
 
-    # Title (RO)
-    if paper.get("title"):
+    def section_body(text):
+        for para in text.split("\n\n"):
+            para = para.strip()
+            if para:
+                add(para, style="Normal")
+
+    def is_na(key):
+        return (paper.get(key) or "").strip().upper() in ("N/A", "NA", "")
+
+    # ── Title (RO) ──
+    if not is_na("title"):
         add(paper["title"].upper(), style="Title", bold=True, center=True)
         for _ in range(6):
             blank()
 
-    # Authors
-    if paper.get("authors"):
-        for author in paper["authors"]:
-            if author.strip():
-                add(author.strip(), style="Author", center=True)
+    # ── Authors ──
+    authors = paper.get("authors") or []
+    if isinstance(authors, str):
+        authors = [a.strip() for a in authors.splitlines() if a.strip()]
+    for author in authors:
+        add(author, style="Author", center=True)
+    if authors:
         blank()
 
-    # Rezumat
-    if paper.get("rezumat"):
+    # ── Rezumat ──
+    if not is_na("rezumat"):
         add("REZUMAT", style="Chapter Heading", bold=True)
         add(paper["rezumat"], style="Abstract Text", italic=True)
         blank()
         blank()
 
-    # Keywords RO
-    if paper.get("keywords_ro"):
+    # ── Cuvinte cheie (RO) ──
+    if not is_na("keywords_ro"):
         p = doc.add_paragraph(style="Abstract Text")
-        run = p.add_run("Cuvinte cheie: ")
-        run.bold = True
-        run.italic = True
+        r = p.add_run("Cuvinte cheie: ")
+        r.bold = True
+        r.italic = True
         p.add_run(paper["keywords_ro"]).italic = True
         blank()
         blank()
 
-    # Body sections
-    for key in ["introduction", "methodology", "results", "conclusions"]:
-        if paper.get(key):
-            label = SECTION_MAP[key]["label"]
-            add(label, style="Chapter Heading", bold=True)
-            for para in paper[key].split("\n\n"):
-                para = para.strip()
-                if para:
-                    add(para, style="Normal")
+    # ── Nomenclatură ──
+    if not is_na("nomenclature"):
+        add("NOMENCLATURĂ", style="Chapter Heading", bold=True)
+        section_body(paper["nomenclature"])
+        blank()
+
+    # ── Body sections (numbered) ──
+    BODY_SECTIONS = [
+        ("introduction",       "1. Introducere"),
+        ("relevance",          "2. Relevanța Cercetării"),
+        ("methodology",        "3. Metodologie (Model Matematic)"),
+        ("materials_methods",  "4. Materiale și Metode"),
+        ("technology_overview","5. Prezentare Tehnologică"),
+        ("case_study",         "6. Studiu de Caz"),
+        ("results",            "7. Rezultate și Discuții"),
+        ("standards",          "8. Standarde și Reglementări"),
+        ("future_challenges",  "9. Provocări Viitoare"),
+        ("environmental",      "10. Sustenabilitate și Impact de Mediu"),
+        ("conclusions",        "11. Concluzii"),
+    ]
+
+    for key, heading in BODY_SECTIONS:
+        if not is_na(key):
+            add(heading, style="Chapter Heading", bold=True)
+            section_body(paper[key])
             blank()
 
-    # English title
-    if paper.get("title_en"):
+    # ── English Title ──
+    if not is_na("title_en"):
         blank()
         blank()
         add(paper["title_en"].upper(), style="Title", bold=True, center=True)
         blank()
         blank()
 
-    # Abstract EN
-    if paper.get("abstract_en"):
+    # ── Abstract (EN) ──
+    if not is_na("abstract_en"):
         add("ABSTRACT", style="Chapter Heading", bold=True)
         add(paper["abstract_en"], style="Abstract Text", italic=True)
         blank()
         blank()
 
-    # Keywords EN
-    if paper.get("keywords_en"):
+    # ── Keywords (EN) ──
+    if not is_na("keywords_en"):
         p = doc.add_paragraph(style="Abstract Text")
-        run = p.add_run("Keywords: ")
-        run.bold = True
-        run.italic = True
+        r = p.add_run("Keywords: ")
+        r.bold = True
+        r.italic = True
         p.add_run(paper["keywords_en"]).italic = True
-        blank()
-        blank()
-        blank()
-        blank()
+        for _ in range(4):
+            blank()
 
-    # References
-    if paper.get("references"):
+    # ── References ──
+    if not is_na("references"):
         add("BIBLIOGRAFIE", style="Bibliography Header", bold=True, center=True)
         blank()
         blank()
