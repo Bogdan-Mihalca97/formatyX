@@ -3,3 +3,4 @@ python-docx
 anthropic
 python-dotenv
 lxml
+requests
