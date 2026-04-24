@@ -8,8 +8,7 @@ import requests
 from anthropic import Anthropic
 from dotenv import load_dotenv
 from docx import Document
-from docx.shared import Pt, Mm, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Mm
 
 load_dotenv()
 
@@ -322,7 +321,7 @@ def check_grammar(text: str, language: str = "ro-RO") -> list[dict]:
 
 
 def build_docx(paper: dict, output_path: str):
-    """Build a conference-formatted DOCX from generated sections."""
+    """Build a conference-formatted DOCX matching the formatter's exact rules."""
     from create_template import create_template
 
     if not os.path.exists("template_conference.docx"):
@@ -332,124 +331,121 @@ def build_docx(paper: dict, output_path: str):
     for p in doc.paragraphs:
         p._element.getparent().remove(p._element)
 
-    def add(text, style="Normal", bold=False, italic=False, center=False, size=None):
-        p = doc.add_paragraph(style=style)
-        run = p.add_run(text)
-        if bold:
-            run.bold = True
-        if italic:
-            run.italic = italic
-        if center:
-            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        if size:
-            run.font.size = Pt(size)
+    def blank(n=1):
+        for _ in range(n):
+            p = doc.add_paragraph("", style='Normal')
+            p.paragraph_format.first_line_indent = Mm(0)
+
+    def para(text, style, bold=False, italic=False, keep_next=False):
+        p = doc.add_paragraph(text, style=style)
+        for r in p.runs:
+            if bold:
+                r.font.bold = True
+            if italic:
+                r.font.italic = True
+        if keep_next:
+            p.paragraph_format.keep_with_next = True
         return p
 
-    def blank():
-        add("", style="Normal")
-
-    def section_body(text):
-        for para in text.split("\n\n"):
-            para = para.strip()
-            if para:
-                add(para, style="Normal")
+    def body_paragraphs(text):
+        for chunk in text.split("\n\n"):
+            chunk = chunk.strip()
+            if chunk:
+                para(chunk, 'Normal')
 
     def is_na(key):
         return (paper.get(key) or "").strip().upper() in ("N/A", "NA", "")
 
-    # ── Title (RO) ──
+    # ── Title (RO) — 6 blank lines before, UPPERCASE ──
     if not is_na("title"):
-        add(paper["title"].upper(), style="Title", bold=True, center=True)
-        for _ in range(6):
-            blank()
+        blank(6)
+        para(paper["title"].upper(), 'Title')
 
-    # ── Authors ──
+    # ── Authors — 1 blank line after title, all on one line ──
     authors = paper.get("authors") or []
     if isinstance(authors, str):
         authors = [a.strip() for a in authors.splitlines() if a.strip()]
-    for author in authors:
-        add(author, style="Author", center=True)
+    blank(1)
     if authors:
-        blank()
+        para(", ".join(authors), 'Author')
 
-    # ── Rezumat ──
+    # ── Rezumat — 2 blank lines before label, 1 blank after label ──
     if not is_na("rezumat"):
-        add("REZUMAT", style="Chapter Heading", bold=True)
-        add(paper["rezumat"], style="Abstract Text", italic=True)
-        blank()
-        blank()
+        blank(2)
+        para("Rezumat", 'Chapter Heading', keep_next=True)
+        blank(1)
+        para(paper["rezumat"], 'Normal', italic=True)
 
     # ── Cuvinte cheie (RO) ──
     if not is_na("keywords_ro"):
-        p = doc.add_paragraph(style="Abstract Text")
+        p = doc.add_paragraph(style='Normal')
+        p.paragraph_format.first_line_indent = Mm(12.7)
         r = p.add_run("Cuvinte cheie: ")
-        r.bold = True
-        r.italic = True
-        p.add_run(paper["keywords_ro"]).italic = True
-        blank()
-        blank()
+        r.font.bold = True
+        r.font.italic = True
+        kwr = p.add_run(paper["keywords_ro"])
+        kwr.font.italic = True
 
-    # ── Nomenclatură ──
+    # ── Nomenclatură (optional) — treated as heading1 ──
     if not is_na("nomenclature"):
-        add("NOMENCLATURĂ", style="Chapter Heading", bold=True)
-        section_body(paper["nomenclature"])
-        blank()
+        blank(1)
+        para("Nomenclatură", 'Chapter Heading', keep_next=True)
+        blank(1)
+        body_paragraphs(paper["nomenclature"])
 
-    # ── Body sections (numbered) ──
+    # ── Body sections — 1 blank before heading, heading with keep_next, 1 blank after ──
     BODY_SECTIONS = [
-        ("introduction",       "1. Introducere"),
-        ("relevance",          "2. Relevanța Cercetării"),
-        ("methodology",        "3. Metodologie (Model Matematic)"),
-        ("materials_methods",  "4. Materiale și Metode"),
-        ("technology_overview","5. Prezentare Tehnologică"),
-        ("case_study",         "6. Studiu de Caz"),
-        ("results",            "7. Rezultate și Discuții"),
-        ("standards",          "8. Standarde și Reglementări"),
-        ("future_challenges",  "9. Provocări Viitoare"),
-        ("environmental",      "10. Sustenabilitate și Impact de Mediu"),
-        ("conclusions",        "11. Concluzii"),
+        ("introduction",        "1. Introducere"),
+        ("relevance",           "2. Relevanța Cercetării"),
+        ("methodology",         "3. Metodologie (Model Matematic)"),
+        ("materials_methods",   "4. Materiale și Metode"),
+        ("technology_overview", "5. Prezentare Tehnologică"),
+        ("case_study",          "6. Studiu de Caz"),
+        ("results",             "7. Rezultate și Discuții"),
+        ("standards",           "8. Standarde și Reglementări"),
+        ("future_challenges",   "9. Provocări Viitoare"),
+        ("environmental",       "10. Sustenabilitate și Impact de Mediu"),
+        ("conclusions",         "11. Concluzii"),
     ]
 
     for key, heading in BODY_SECTIONS:
         if not is_na(key):
-            add(heading, style="Chapter Heading", bold=True)
-            section_body(paper[key])
-            blank()
+            blank(1)
+            para(heading, 'Chapter Heading', keep_next=True)
+            blank(1)
+            body_paragraphs(paper[key])
 
-    # ── English Title ──
+    # ── English title — 2 blank before, UPPERCASE, 2 blank after ──
     if not is_na("title_en"):
-        blank()
-        blank()
-        add(paper["title_en"].upper(), style="Title", bold=True, center=True)
-        blank()
-        blank()
+        blank(2)
+        para(paper["title_en"].upper(), 'Title')
+        blank(2)
 
-    # ── Abstract (EN) ──
+    # ── Abstract (EN) — label + 1 blank + italic text + 1 blank ──
     if not is_na("abstract_en"):
-        add("ABSTRACT", style="Chapter Heading", bold=True)
-        add(paper["abstract_en"], style="Abstract Text", italic=True)
-        blank()
-        blank()
+        para("Abstract", 'Chapter Heading', keep_next=True)
+        blank(1)
+        para(paper["abstract_en"], 'Normal', italic=True)
+        blank(1)
 
     # ── Keywords (EN) ──
     if not is_na("keywords_en"):
-        p = doc.add_paragraph(style="Abstract Text")
+        p = doc.add_paragraph(style='Normal')
+        p.paragraph_format.first_line_indent = Mm(12.7)
         r = p.add_run("Keywords: ")
-        r.bold = True
-        r.italic = True
-        p.add_run(paper["keywords_en"]).italic = True
-        for _ in range(4):
-            blank()
+        r.font.bold = True
+        r.font.italic = True
+        kwr = p.add_run(paper["keywords_en"])
+        kwr.font.italic = True
 
-    # ── References ──
+    # ── Bibliography — 3 blank before header, 1 blank after ──
     if not is_na("references"):
-        add("BIBLIOGRAFIE", style="Bibliography Header", bold=True, center=True)
-        blank()
-        blank()
-        blank()
+        blank(3)
+        para("Bibliografie", 'Bibliography Header')
+        blank(1)
         for line in paper["references"].split("\n"):
             line = line.strip()
             if line:
-                add(line, style="Bibliography Entry")
+                para(line, 'Bibliography Entry')
 
     doc.save(output_path)
