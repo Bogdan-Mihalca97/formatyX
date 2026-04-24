@@ -30,7 +30,7 @@ SECTIONS = [
         "key": "rezumat",
         "label": "Rezumat",
         "optional": False,
-        "max_tokens": 500,
+        "max_tokens": 700,
         "instruction": (
             "Scrie un rezumat academic de aproximativ 200-250 de cuvinte în limba română. "
             "Prezintă: contextul cercetării, obiectivele, metodologia utilizată, principalele rezultate și concluzii. "
@@ -52,7 +52,7 @@ SECTIONS = [
         "key": "nomenclature",
         "label": "Nomenclatură",
         "optional": True,
-        "max_tokens": 500,
+        "max_tokens": 700,
         "instruction": (
             "Dacă lucrarea implică simboluri matematice, mărimi fizice sau abrevieri tehnice specifice, "
             "listează-le ca 'Simbol — Definiție' (câte unul pe linie). "
@@ -65,7 +65,7 @@ SECTIONS = [
         "key": "introduction",
         "label": "1. Introducere",
         "optional": False,
-        "max_tokens": 900,
+        "max_tokens": 1800,
         "instruction": (
             "Scrie introducerea lucrării în română (450-550 cuvinte). "
             "Include: contextul teoretic și starea artei, motivația cercetării, "
@@ -77,7 +77,7 @@ SECTIONS = [
         "key": "relevance",
         "label": "2. Relevanța cercetării",
         "optional": False,
-        "max_tokens": 700,
+        "max_tokens": 1200,
         "instruction": (
             "Descrie relevanța practică și teoretică a cercetării în română (300-400 cuvinte). "
             "Include: importanța domeniului, impactul potențial al rezultatelor, "
@@ -89,7 +89,7 @@ SECTIONS = [
         "key": "methodology",
         "label": "3. Metodologie (Model Matematic)",
         "optional": False,
-        "max_tokens": 900,
+        "max_tokens": 1800,
         "instruction": (
             "Descrie metodologia și modelul matematic al cercetării în română (450-550 cuvinte). "
             "Include: ecuații și relații matematice relevante, ipotezele și limitările modelului, "
@@ -101,7 +101,7 @@ SECTIONS = [
         "key": "materials_methods",
         "label": "4. Materiale și Metode",
         "optional": False,
-        "max_tokens": 800,
+        "max_tokens": 1600,
         "instruction": (
             "Descrie materialele, echipamentele și procedurile utilizate în română (400-500 cuvinte). "
             "Include: specificațiile tehnice ale materialelor/echipamentelor, "
@@ -114,7 +114,7 @@ SECTIONS = [
         "key": "technology_overview",
         "label": "5. Prezentare Tehnologică",
         "optional": True,
-        "max_tokens": 800,
+        "max_tokens": 1600,
         "instruction": (
             "Dacă lucrarea implică o tehnologie specifică, prezintă o privire de ansamblu asupra "
             "tehnologiilor relevante în română (350-450 cuvinte): principii de funcționare, "
@@ -127,7 +127,7 @@ SECTIONS = [
         "key": "case_study",
         "label": "6. Studiu de Caz",
         "optional": True,
-        "max_tokens": 900,
+        "max_tokens": 1800,
         "instruction": (
             "Dacă lucrarea include un studiu de caz specific sau o aplicație concretă, "
             "descrie-l în română (450-550 cuvinte): contextul specific, datele de intrare, "
@@ -140,7 +140,7 @@ SECTIONS = [
         "key": "results",
         "label": "7. Rezultate și Discuții",
         "optional": False,
-        "max_tokens": 900,
+        "max_tokens": 1800,
         "instruction": (
             "Prezintă și discută rezultatele obținute în română (450-550 cuvinte). "
             "Include: prezentarea datelor principale, analiza comparativă, "
@@ -152,7 +152,7 @@ SECTIONS = [
         "key": "standards",
         "label": "8. Standarde și Reglementări",
         "optional": True,
-        "max_tokens": 700,
+        "max_tokens": 1200,
         "instruction": (
             "Dacă lucrarea este relevantă pentru standarde tehnice, reglementări sau norme specifice, "
             "discută-le în română (300-400 cuvinte): standardele aplicabile, cerințele de conformitate, "
@@ -165,7 +165,7 @@ SECTIONS = [
         "key": "future_challenges",
         "label": "9. Provocări Viitoare",
         "optional": False,
-        "max_tokens": 700,
+        "max_tokens": 1200,
         "instruction": (
             "Identifică și discută provocările viitoare și direcțiile de cercetare în română (300-400 cuvinte). "
             "Include: limitările actuale ale cercetării, oportunități de îmbunătățire, "
@@ -177,7 +177,7 @@ SECTIONS = [
         "key": "environmental",
         "label": "10. Sustenabilitate și Impact de Mediu",
         "optional": True,
-        "max_tokens": 700,
+        "max_tokens": 1200,
         "instruction": (
             "Dacă lucrarea are implicații de mediu sau sustenabilitate relevante, "
             "analizează-le în română (300-400 cuvinte): impactul de mediu al soluțiilor propuse, "
@@ -190,7 +190,7 @@ SECTIONS = [
         "key": "conclusions",
         "label": "11. Concluzii",
         "optional": False,
-        "max_tokens": 500,
+        "max_tokens": 1000,
         "instruction": (
             "Scrie concluziile lucrării în română (200-280 cuvinte). "
             "Sintetizează: principalele descoperiri, contribuțiile originale, "
@@ -212,7 +212,7 @@ SECTIONS = [
         "key": "abstract_en",
         "label": "Abstract (EN)",
         "optional": False,
-        "max_tokens": 500,
+        "max_tokens": 700,
         "instruction": (
             "Translate the Romanian abstract (Rezumat) into English (200-250 words). "
             "Maintain academic tone and precision. Return ONLY the translated abstract text."
