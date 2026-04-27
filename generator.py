@@ -79,7 +79,7 @@ SECTIONS = [
         "key": "relevance",
         "label": "2. Relevanța cercetării",
         "optional": False,
-        "max_tokens": 1200,
+        "max_tokens": 2500,
         "instruction": (
             "Descrie relevanța practică și teoretică a cercetării în română (300-400 cuvinte). "
             "Include: importanța domeniului, impactul potențial al rezultatelor, "
@@ -91,7 +91,7 @@ SECTIONS = [
         "key": "methodology",
         "label": "3. Metodologie (Model Matematic)",
         "optional": False,
-        "max_tokens": 4000,
+        "max_tokens": 8192,
         "instruction": (
             "Scrie metodologia completă în română cu subcapitole, ecuații și tabele. "
             "Structurează cu subcapitole folosind formatul '### 3.x Titlu subcapitol'. "
@@ -107,7 +107,7 @@ SECTIONS = [
         "key": "materials_methods",
         "label": "4. Materiale și Metode",
         "optional": False,
-        "max_tokens": 3000,
+        "max_tokens": 8192,
         "instruction": (
             "Descrie materialele și metodele în română cu subcapitole și tabele unde este relevant. "
             "Folosește formatul '### 4.x Titlu' pentru subcapitole (2-3 subcapitole). "
@@ -148,7 +148,7 @@ SECTIONS = [
         "key": "results",
         "label": "7. Rezultate și Discuții",
         "optional": False,
-        "max_tokens": 4000,
+        "max_tokens": 8192,
         "instruction": (
             "Prezintă și discută rezultatele în română cu subcapitole și tabele de rezultate. "
             "Folosește formatul '### 7.x Titlu' pentru subcapitole (2-3 subcapitole). "
@@ -364,22 +364,26 @@ def build_docx(paper: dict, output_path: str):
             if m.start() > last:
                 r = p.add_run(text[last:m.start()])
                 r.font.name = _FONT; r.font.size = Pt(11)
-                r.font.bold = bold; r.font.italic = italic
+                if bold: r.font.bold = True
+                if italic: r.font.italic = True
             # base part
             r = p.add_run(m.group(1))
             r.font.name = _FONT; r.font.size = Pt(11)
-            r.font.bold = bold; r.font.italic = italic
+            if bold: r.font.bold = True
+            if italic: r.font.italic = True
             # subscript part (strip braces if present)
             sub_text = m.group(2).strip('{}')
             r = p.add_run(sub_text)
             r.font.name = _FONT; r.font.size = Pt(9)
             r.font.subscript = True
-            r.font.bold = bold; r.font.italic = italic
+            if bold: r.font.bold = True
+            if italic: r.font.italic = True
             last = m.end()
         if last < len(text):
             r = p.add_run(text[last:])
             r.font.name = _FONT; r.font.size = Pt(11)
-            r.font.bold = bold; r.font.italic = italic
+            if bold: r.font.bold = True
+            if italic: r.font.italic = True
 
     def para(text, style, bold=False, italic=False, keep_next=False):
         p = doc.add_paragraph(style=style)
@@ -417,12 +421,31 @@ def build_docx(paper: dict, output_path: str):
                 cell = tbl.rows[r_i].cells[c_i]
                 p = cell.paragraphs[0]
                 p.clear()
+                p.paragraph_format.first_line_indent = Mm(0)
+                p.alignment = WD_ALIGN_PARAGRAPH.LEFT
                 run = p.add_run(cell_text)
                 run.font.name = _FONT
                 run.font.size = Pt(10)
                 if r_i == 0:
                     run.font.bold = True
-        blank(1)
+
+    _md_bold_full_re = re.compile(r'^\*\*(.+)\*\*$')
+
+    def _render_caption(line: str):
+        """Render a **bold caption** line as Table Caption style."""
+        m = _md_bold_full_re.match(line)
+        caption_text = m.group(1).strip() if m else line.strip('*').strip()
+        p = doc.add_paragraph(style='Table Caption')
+        p.paragraph_format.first_line_indent = Mm(0)
+        r = p.add_run(caption_text)
+        r.font.name = _FONT
+        r.font.bold = True
+        r.font.size = Pt(10)
+
+    def _is_table_caption(line: str, next_line: str) -> bool:
+        """True if line is a bold caption immediately before a table."""
+        return (line.startswith('**') and line.endswith('**')
+                and next_line.startswith('|'))
 
     def render_section(text: str):
         """Render a section body: subchapters, tables, formulas, normal text."""
@@ -430,6 +453,7 @@ def build_docx(paper: dict, output_path: str):
         i = 0
         while i < len(lines):
             line = lines[i].strip()
+            next_line = lines[i + 1].strip() if i + 1 < len(lines) else ''
 
             # Subchapter heading (## or ###)
             m = _sub_heading_re.match(line)
@@ -442,13 +466,23 @@ def build_docx(paper: dict, output_path: str):
                 i += 1
                 continue
 
+            # Table caption + table block
+            if _is_table_caption(line, next_line):
+                blank(1)
+                _render_caption(line)
+                i += 1
+                # Fall through to collect the table on the next iteration
+                continue
+
             # Markdown table block — collect all consecutive pipe lines
             if line.startswith('|'):
+                # blank before only if no caption preceded (caption adds its own blank)
                 table_lines = []
                 while i < len(lines) and lines[i].strip().startswith('|'):
                     table_lines.append(lines[i].strip())
                     i += 1
                 _render_md_table(table_lines)
+                blank(1)
                 continue
 
             # Empty line
@@ -458,10 +492,12 @@ def build_docx(paper: dict, output_path: str):
 
             # Formula line
             if _is_formula_line(line):
+                blank(1)
                 p = doc.add_paragraph(style='Normal')
                 p.paragraph_format.first_line_indent = Mm(0)
                 p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 _add_subscript_runs(p, line)
+                blank(1)
                 i += 1
                 continue
 
@@ -560,6 +596,29 @@ def build_docx(paper: dict, output_path: str):
         kwr = p.add_run(paper["keywords_en"])
         kwr.font.italic = True
 
+    _ieee_re = re.compile(r'^(\[\d+\]\s*)(.+?),\s*"(.+?)"(.*)$', re.DOTALL)
+
+    def _render_bib_entry(line: str):
+        """Render IEEE bibliography: [N] Authors bold, "Title" italic, rest normal."""
+        p = doc.add_paragraph(style='Bibliography Entry')
+        m = _ieee_re.match(line)
+        if m:
+            # [N] + authors: bold
+            r = p.add_run(m.group(1) + m.group(2) + ', “')
+            r.font.name = _FONT; r.font.size = Pt(11)
+            r.font.bold = True
+            # Title: italic
+            r = p.add_run(m.group(3))
+            r.font.name = _FONT; r.font.size = Pt(11)
+            r.font.italic = True
+            # closing quote + rest: normal
+            r = p.add_run('”' + m.group(4))
+            r.font.name = _FONT; r.font.size = Pt(11)
+        else:
+            r = p.add_run(line)
+            r.font.name = _FONT; r.font.size = Pt(11)
+        return p
+
     # ── Bibliography — 3 blank before header, 1 blank after ──
     if not is_na("references"):
         blank(3)
@@ -568,6 +627,6 @@ def build_docx(paper: dict, output_path: str):
         for line in paper["references"].split("\n"):
             line = line.strip()
             if line:
-                para(line, 'Bibliography Entry')
+                _render_bib_entry(line)
 
     doc.save(output_path)
