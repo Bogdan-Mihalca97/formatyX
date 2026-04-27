@@ -7,8 +7,10 @@ import os
 import requests
 from anthropic import Anthropic
 from dotenv import load_dotenv
+import re
 from docx import Document
-from docx.shared import Mm
+from docx.shared import Mm, Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 load_dotenv()
 
@@ -51,13 +53,14 @@ SECTIONS = [
         "key": "nomenclature",
         "label": "Nomenclatură",
         "optional": True,
-        "max_tokens": 700,
+        "max_tokens": 1800,
         "instruction": (
             "Dacă lucrarea implică simboluri matematice, mărimi fizice sau abrevieri tehnice specifice, "
-            "listează-le ca 'Simbol — Definiție' (câte unul pe linie). "
-            "Dacă lucrarea nu necesită o nomenclatură specifică sau nu se pot genera simboluri relevante "
-            "pentru subiectul dat, returnează exact 'N/A'. "
-            "Nu include texte introductive sau anteturi."
+            "listează-le câte unul pe linie în formatul: Simbol — Definiție [unitate]. "
+            "IMPORTANT: folosește notația cu underscore pentru indici (ex: Ex_in, eta_ex, ex_ph, Q_rec, m_comb) "
+            "astfel încât indicii să poată fi formatați ca subscript în document. "
+            "Dacă lucrarea nu necesită nomenclatură, returnează exact 'N/A'. "
+            "Nu include texte introductive sau anteturi. Listează TOATE simbolurile relevante."
         ),
     },
     {
@@ -331,27 +334,79 @@ def build_docx(paper: dict, output_path: str):
     for p in doc.paragraphs:
         p._element.getparent().remove(p._element)
 
+    _subscript_re = re.compile(r'([^\s_]+)_(\{[^}]+\}|\w+)')
+    _formula_re   = re.compile(r'[=+\-*/^∑∫∂·×]')
+    _FONT = "Times New Roman"
+
     def blank(n=1):
         for _ in range(n):
             p = doc.add_paragraph("", style='Normal')
             p.paragraph_format.first_line_indent = Mm(0)
 
+    def _add_subscript_runs(p, text, bold=False, italic=False):
+        """Add runs with subscript formatting for base_sub patterns."""
+        last = 0
+        for m in _subscript_re.finditer(text):
+            if m.start() > last:
+                r = p.add_run(text[last:m.start()])
+                r.font.name = _FONT; r.font.size = Pt(11)
+                r.font.bold = bold; r.font.italic = italic
+            # base part
+            r = p.add_run(m.group(1))
+            r.font.name = _FONT; r.font.size = Pt(11)
+            r.font.bold = bold; r.font.italic = italic
+            # subscript part (strip braces if present)
+            sub_text = m.group(2).strip('{}')
+            r = p.add_run(sub_text)
+            r.font.name = _FONT; r.font.size = Pt(9)
+            r.font.subscript = True
+            r.font.bold = bold; r.font.italic = italic
+            last = m.end()
+        if last < len(text):
+            r = p.add_run(text[last:])
+            r.font.name = _FONT; r.font.size = Pt(11)
+            r.font.bold = bold; r.font.italic = italic
+
     def para(text, style, bold=False, italic=False, keep_next=False):
-        p = doc.add_paragraph(text, style=style)
-        for r in p.runs:
-            if bold:
-                r.font.bold = True
-            if italic:
-                r.font.italic = True
+        p = doc.add_paragraph(style=style)
+        _add_subscript_runs(p, text, bold=bold, italic=italic)
         if keep_next:
             p.paragraph_format.keep_with_next = True
         return p
 
+    def _is_formula_line(line: str) -> bool:
+        """Heuristic: short line containing = and math operators."""
+        return (len(line) < 250
+                and '=' in line
+                and len(_formula_re.findall(line)) >= 2)
+
     def body_paragraphs(text):
         for chunk in text.split("\n\n"):
             chunk = chunk.strip()
-            if chunk:
-                para(chunk, 'Normal')
+            if not chunk:
+                continue
+            # Handle multi-line chunks: each line may be a formula
+            lines = chunk.split("\n")
+            if len(lines) == 1:
+                if _is_formula_line(chunk):
+                    p = doc.add_paragraph(style='Normal')
+                    p.paragraph_format.first_line_indent = Mm(0)
+                    p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    _add_subscript_runs(p, chunk)
+                else:
+                    para(chunk, 'Normal')
+            else:
+                for line in lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if _is_formula_line(line):
+                        p = doc.add_paragraph(style='Normal')
+                        p.paragraph_format.first_line_indent = Mm(0)
+                        p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        _add_subscript_runs(p, line)
+                    else:
+                        para(line, 'Normal')
 
     def is_na(key):
         return (paper.get(key) or "").strip().upper() in ("N/A", "NA", "")
@@ -386,12 +441,18 @@ def build_docx(paper: dict, output_path: str):
         kwr = p.add_run(paper["keywords_ro"])
         kwr.font.italic = True
 
-    # ── Nomenclatură (optional) — treated as heading1 ──
+    # ── Nomenclatură (optional) — subscript formatting per entry ──
     if not is_na("nomenclature"):
         blank(1)
         para("Nomenclatură", 'Chapter Heading', keep_next=True)
         blank(1)
-        body_paragraphs(paper["nomenclature"])
+        for line in paper["nomenclature"].split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            p = doc.add_paragraph(style='Normal')
+            p.paragraph_format.first_line_indent = Mm(0)
+            _add_subscript_runs(p, line)
 
     # ── Body sections — 1 blank before heading, heading with keep_next, 1 blank after ──
     BODY_SECTIONS = [
