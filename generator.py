@@ -91,25 +91,31 @@ SECTIONS = [
         "key": "methodology",
         "label": "3. Metodologie (Model Matematic)",
         "optional": False,
-        "max_tokens": 1800,
+        "max_tokens": 2500,
         "instruction": (
-            "Descrie metodologia și modelul matematic al cercetării în română (450-550 cuvinte). "
-            "Include: ecuații și relații matematice relevante, ipotezele și limitările modelului, "
-            "parametrii tehnici și condițiile de frontieră. "
-            "Nu include anteturi. Returnează DOAR conținutul metodologiei."
+            "Scrie metodologia completă în română cu subcapitole, ecuații și tabele. "
+            "Structurează cu subcapitole folosind formatul '### 3.x Titlu subcapitol'. "
+            "Include 3-4 subcapitole (ex: descrierea sistemului, modelul matematic, ipoteze, parametri). "
+            "Pentru ecuații matematice, scrie fiecare ecuație pe o linie separată folosind '=' și notație cu underscore pentru indici (ex: Ex_in = m_dot * ex_ph). "
+            "Include cel puțin un tabel de parametri tehnici în format markdown: "
+            "| Parametru | Simbol | Valoare | Unitate | pe prima linie, "
+            "|---|---|---|---| pe a doua linie, apoi rândurile de date. "
+            "Nu include 'Metodologie' ca antet principal — începe direct cu primul subcapitol '### 3.1 ...'."
         ),
     },
     {
         "key": "materials_methods",
         "label": "4. Materiale și Metode",
         "optional": False,
-        "max_tokens": 1600,
+        "max_tokens": 2000,
         "instruction": (
-            "Descrie materialele, echipamentele și procedurile utilizate în română (400-500 cuvinte). "
-            "Include: specificațiile tehnice ale materialelor/echipamentelor, "
-            "procedurile de colectare și procesare a datelor, configurația experimentală. "
+            "Descrie materialele și metodele în română cu subcapitole și tabele unde este relevant. "
+            "Folosește formatul '### 4.x Titlu' pentru subcapitole (2-3 subcapitole). "
+            "Dacă există echipamente sau materiale cu specificații tehnice, include un tabel markdown: "
+            "| Echipament/Material | Specificații | Producător/Standard | "
+            "|---|---|---| urmat de rândurile de date. "
             "Folosește voce pasivă și limbaj tehnic precis. "
-            "Nu include anteturi. Returnează DOAR conținutul secțiunii."
+            "Nu include 'Materiale și Metode' ca antet — începe direct cu '### 4.1 ...'."
         ),
     },
     {
@@ -142,12 +148,15 @@ SECTIONS = [
         "key": "results",
         "label": "7. Rezultate și Discuții",
         "optional": False,
-        "max_tokens": 1800,
+        "max_tokens": 2500,
         "instruction": (
-            "Prezintă și discută rezultatele obținute în română (450-550 cuvinte). "
-            "Include: prezentarea datelor principale, analiza comparativă, "
-            "interpretarea rezultatelor în raport cu obiectivele, implicațiile practice. "
-            "Nu include anteturi. Returnează DOAR conținutul secțiunii."
+            "Prezintă și discută rezultatele în română cu subcapitole și tabele de rezultate. "
+            "Folosește formatul '### 7.x Titlu' pentru subcapitole (2-3 subcapitole). "
+            "Include cel puțin un tabel de rezultate în format markdown cu valorile calculate/măsurate: "
+            "| Mărime | Simbol | Valoare calculată | Unitate | pe prima linie, "
+            "|---|---|---|---| pe a doua, apoi datele. "
+            "Discută semnificația rezultatelor și compară cu literatura. "
+            "Nu include 'Rezultate' ca antet — începe direct cu '### 7.1 ...'."
         ),
     },
     {
@@ -379,39 +388,86 @@ def build_docx(paper: dict, output_path: str):
             p.paragraph_format.keep_with_next = True
         return p
 
+    _md_sep_re  = re.compile(r'^\|[-| :]+\|$')
+    _sub_heading_re = re.compile(r'^#{2,4}\s+(.+)')
+
     def _is_formula_line(line: str) -> bool:
-        """Heuristic: short line containing = and math operators."""
         return (len(line) < 250
                 and '=' in line
                 and len(_formula_re.findall(line)) >= 2)
 
-    def body_paragraphs(text):
-        for chunk in text.split("\n\n"):
-            chunk = chunk.strip()
-            if not chunk:
+    def _render_md_table(table_lines: list):
+        """Render a list of markdown pipe-table lines as a Word table."""
+        rows = []
+        for line in table_lines:
+            if _md_sep_re.match(line):
                 continue
-            # Handle multi-line chunks: each line may be a formula
-            lines = chunk.split("\n")
-            if len(lines) == 1:
-                if _is_formula_line(chunk):
-                    p = doc.add_paragraph(style='Normal')
-                    p.paragraph_format.first_line_indent = Mm(0)
-                    p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    _add_subscript_runs(p, chunk)
-                else:
-                    para(chunk, 'Normal')
-            else:
-                for line in lines:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    if _is_formula_line(line):
-                        p = doc.add_paragraph(style='Normal')
-                        p.paragraph_format.first_line_indent = Mm(0)
-                        p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                        _add_subscript_runs(p, line)
-                    else:
-                        para(line, 'Normal')
+            parts = line.split('|')
+            cells = [c.strip() for c in parts[1:-1]] if len(parts) > 2 else [c.strip() for c in parts if c.strip()]
+            if cells:
+                rows.append(cells)
+        if not rows:
+            return
+        cols = max(len(r) for r in rows)
+        tbl = doc.add_table(rows=len(rows), cols=cols)
+        tbl.style = 'Table Grid'
+        for r_i, row_data in enumerate(rows):
+            for c_i in range(cols):
+                cell_text = row_data[c_i] if c_i < len(row_data) else ""
+                cell = tbl.rows[r_i].cells[c_i]
+                p = cell.paragraphs[0]
+                p.clear()
+                run = p.add_run(cell_text)
+                run.font.name = _FONT
+                run.font.size = Pt(10)
+                if r_i == 0:
+                    run.font.bold = True
+        blank(1)
+
+    def render_section(text: str):
+        """Render a section body: subchapters, tables, formulas, normal text."""
+        lines = text.split('\n')
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+
+            # Subchapter heading (## or ###)
+            m = _sub_heading_re.match(line)
+            if m:
+                blank(1)
+                p = doc.add_paragraph(style='Sub Heading')
+                _add_subscript_runs(p, m.group(1).strip())
+                p.paragraph_format.keep_with_next = True
+                blank(1)
+                i += 1
+                continue
+
+            # Markdown table block — collect all consecutive pipe lines
+            if line.startswith('|'):
+                table_lines = []
+                while i < len(lines) and lines[i].strip().startswith('|'):
+                    table_lines.append(lines[i].strip())
+                    i += 1
+                _render_md_table(table_lines)
+                continue
+
+            # Empty line
+            if not line:
+                i += 1
+                continue
+
+            # Formula line
+            if _is_formula_line(line):
+                p = doc.add_paragraph(style='Normal')
+                p.paragraph_format.first_line_indent = Mm(0)
+                p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                _add_subscript_runs(p, line)
+                i += 1
+                continue
+
+            # Normal body text
+            para(line, 'Normal')
+            i += 1
 
     def is_na(key):
         return (paper.get(key) or "").strip().upper() in ("N/A", "NA", "")
@@ -479,7 +535,7 @@ def build_docx(paper: dict, output_path: str):
             blank(1)
             para(heading, 'Chapter Heading', keep_next=True)
             blank(1)
-            body_paragraphs(paper[key])
+            render_section(paper[key])
 
     # ── English title — 2 blank before, UPPERCASE, 2 blank after ──
     if not is_na("title_en"):
