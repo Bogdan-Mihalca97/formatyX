@@ -300,12 +300,15 @@ def generate_section(key: str, topic: str, domain: str, objectives: str,
 
 
 def check_grammar(text: str, language: str = "ro-RO") -> list[dict]:
-    """Check grammar using LanguageTool free API."""
+    """Check grammar using LanguageTool free API (20k char limit)."""
+    MAX_CHARS = 19000
+    text = text[:MAX_CHARS]
     try:
         resp = requests.post(
             "https://api.languagetool.org/v2/check",
-            data={"text": text, "language": language},
-            timeout=15,
+            data={"text": text, "language": language, "enabledOnly": "false"},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=20,
         )
         resp.raise_for_status()
         matches = resp.json().get("matches", [])
@@ -319,6 +322,8 @@ def check_grammar(text: str, language: str = "ro-RO") -> list[dict]:
             }
             for m in matches
         ]
+    except requests.HTTPError as e:
+        return [{"message": f"Grammar check error ({e.response.status_code}): {e.response.text[:200]}", "offset": 0, "length": 0, "replacements": [], "context": ""}]
     except Exception as e:
         return [{"message": f"Grammar check unavailable: {e}", "offset": 0, "length": 0, "replacements": [], "context": ""}]
 
