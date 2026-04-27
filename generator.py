@@ -234,7 +234,7 @@ SECTIONS = [
         "key": "references",
         "label": "Bibliografie",
         "optional": False,
-        "max_tokens": 900,
+        "max_tokens": 1800,
         "instruction": (
             "Generează 10-14 referințe bibliografice relevante și realiste în format IEEE pentru această lucrare. "
             "Referințele trebuie să fie din domeniul temei cercetate, publicate în reviste sau conferințe recunoscute. "
