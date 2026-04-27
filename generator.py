@@ -91,7 +91,7 @@ SECTIONS = [
         "key": "methodology",
         "label": "3. Metodologie (Model Matematic)",
         "optional": False,
-        "max_tokens": 2500,
+        "max_tokens": 4000,
         "instruction": (
             "Scrie metodologia completă în română cu subcapitole, ecuații și tabele. "
             "Structurează cu subcapitole folosind formatul '### 3.x Titlu subcapitol'. "
@@ -107,7 +107,7 @@ SECTIONS = [
         "key": "materials_methods",
         "label": "4. Materiale și Metode",
         "optional": False,
-        "max_tokens": 2000,
+        "max_tokens": 3000,
         "instruction": (
             "Descrie materialele și metodele în română cu subcapitole și tabele unde este relevant. "
             "Folosește formatul '### 4.x Titlu' pentru subcapitole (2-3 subcapitole). "
@@ -148,7 +148,7 @@ SECTIONS = [
         "key": "results",
         "label": "7. Rezultate și Discuții",
         "optional": False,
-        "max_tokens": 2500,
+        "max_tokens": 4000,
         "instruction": (
             "Prezintă și discută rezultatele în română cu subcapitole și tabele de rezultate. "
             "Folosește formatul '### 7.x Titlu' pentru subcapitole (2-3 subcapitole). "
