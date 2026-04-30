@@ -544,49 +544,58 @@ def build_claude_message(paragraphs):
 
 
 def expand_abbreviations(paragraphs):
-    """Find 'full name (ABBREV)' patterns and replace all uses of ABBREV with the full name.
+    """Find 'full name (ABBREV)' patterns and replace all later standalone uses with the full name.
 
-    Also removes the parenthetical (ABBREV) from the defining sentence so the
-    abbreviation never appears in the output at all.
+    The first occurrence — "full name (ABBREV)" — is kept exactly as-is.
+    Every subsequent standalone ABBREV in the document is replaced with the full name.
 
     Example:
-        "comunitatea energetica emergenta (CEE) este..."  →  "comunitatea energetica emergenta este..."
+        "comunitatea energetica emergenta (CEE) este..."  →  unchanged (first mention)
         "CEE permite..."                                  →  "comunitatea energetica emergenta permite..."
     """
-    # Matches: "some full name (ABBREV)" where ABBREV is 2-10 uppercase letters/digits
     defn_re = re.compile(
         r'([A-Za-zÀ-ɏ][A-Za-zÀ-ɏ\s,\-]{2,}?)\s*\(([A-Z][A-Z0-9]{1,9})\)'
     )
 
-    # Pass 1 — collect all abbreviation definitions across all paragraphs
-    abbrev_map = {}  # ABBREV -> full name (first definition wins)
-    for p in paragraphs:
+    # Pass 1 — find the first definition of each abbreviation.
+    # Store: ABBREV -> (full_name, paragraph_list_index, match_end_char_offset)
+    abbrev_info = {}
+    for p_idx, p in enumerate(paragraphs):
         for m in defn_re.finditer(p.get("text", "")):
             abbrev = m.group(2)
-            if abbrev not in abbrev_map:
-                abbrev_map[abbrev] = m.group(1).strip().rstrip(",")
+            if abbrev not in abbrev_info:
+                abbrev_info[abbrev] = (m.group(1).strip().rstrip(","), p_idx, m.end())
 
-    if not abbrev_map:
+    if not abbrev_info:
         return paragraphs
 
-    print(f"Expanding {len(abbrev_map)} abbreviation(s): {', '.join(sorted(abbrev_map))}")
+    print(f"Expanding {len(abbrev_info)} abbreviation(s): {', '.join(sorted(abbrev_info))}")
 
-    def _replace(text):
-        # Step 1 — remove parenthetical definitions: " (CEE)" → ""
-        for abbrev in abbrev_map:
-            text = re.sub(rf'\s*\({re.escape(abbrev)}\)', '', text)
-        # Step 2 — replace standalone abbreviation with full name
-        for abbrev, full in abbrev_map.items():
-            text = re.sub(rf'\b{re.escape(abbrev)}\b', full, text)
+    def _replace_after(text, start, abbrev, full):
+        """Replace ABBREV only in text[start:], leaving text[:start] untouched."""
+        return text[:start] + re.sub(rf'\b{re.escape(abbrev)}\b', full, text[start:])
+
+    def _replace_all(text, abbrev, full):
+        return re.sub(rf'\b{re.escape(abbrev)}\b', full, text)
+
+    def _process(text, p_idx):
+        for abbrev, (full, defn_p_idx, defn_end) in abbrev_info.items():
+            if p_idx < defn_p_idx:
+                pass  # before the definition — leave untouched
+            elif p_idx == defn_p_idx:
+                # Same paragraph: keep the definition itself, replace only what follows it
+                text = _replace_after(text, defn_end, abbrev, full)
+            else:
+                text = _replace_all(text, abbrev, full)
         return text
 
     # Pass 2 — apply to all paragraph texts and table cell data
-    for p in paragraphs:
+    for p_idx, p in enumerate(paragraphs):
         if p.get("text"):
-            p["text"] = _replace(p["text"])
+            p["text"] = _process(p["text"], p_idx)
         if p.get("table_data"):
             p["table_data"] = [
-                [_replace(cell) for cell in row]
+                [_process(cell, p_idx) for cell in row]
                 for row in p["table_data"]
             ]
 
