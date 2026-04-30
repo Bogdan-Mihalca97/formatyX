@@ -589,25 +589,29 @@ def expand_abbreviations(paragraphs):
                 text = _replace_all(text, abbrev, full)
         return text
 
-    # Pass 2 — apply to all paragraph texts and table cell data
+    _formula_re = re.compile(r'[=+\-*/^∑∫∂·×±≤≥≠]')
+
+    def _is_formula(text):
+        return len(text) < 300 and '=' in text and len(_formula_re.findall(text)) >= 2
+
+    # Pass 2 — apply to paragraph texts only; skip formula lines and table cells
     for p_idx, p in enumerate(paragraphs):
-        if p.get("text"):
+        if p.get("text") and not _is_formula(p["text"]) and not p.get("is_table_cell"):
             p["text"] = _process(p["text"], p_idx)
-        if p.get("table_data"):
-            p["table_data"] = [
-                [_process(cell, p_idx) for cell in row]
-                for row in p["table_data"]
-            ]
 
     return paragraphs
 
+
+_formula_ops_re = re.compile(r'[=+\-*/^∑∫∂·×±≤≥≠]')
 
 def fix_bibliography_references(paragraphs):
     """Move inline bibliography citations from inside the text to the end of the paragraph.
 
     Detects patterns like [1], [1,2], [1, 2, 3], [1-3] anywhere in a paragraph,
-    removes them from their original position, and appends them (deduplicated,
+    removes them from their inline position, and appends them (deduplicated,
     in order of first appearance) at the end of the paragraph text.
+
+    Skips table cells (equation numbers live there) and formula-like lines.
 
     Example:
         "Sistemul [3] are eficiență ridicată [1,2]."
@@ -616,9 +620,16 @@ def fix_bibliography_references(paragraphs):
     # Matches [1], [1,2], [1, 2], [1-3], [1–3] — purely numeric content
     ref_re = re.compile(r'\[\d+(?:\s*[,;–\-]\s*\d+)*\]')
 
+    def _is_formula(text):
+        return len(text) < 300 and '=' in text and len(_formula_ops_re.findall(text)) >= 2
+
     for p in paragraphs:
         text = p.get("text", "")
         if not text:
+            continue
+
+        # Skip formula lines and table cells — [N] there is an equation number, not a ref
+        if _is_formula(text) or p.get("is_table_cell"):
             continue
 
         refs = ref_re.findall(text)
