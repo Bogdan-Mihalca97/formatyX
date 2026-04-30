@@ -1715,9 +1715,12 @@ def main():
     paragraphs, doc = extract_paragraphs(str(input_path))
     print(f"Extracted {len(paragraphs)} paragraphs")
 
+    # expand-abbreviations implies fast mode (skip all Claude enrichment)
+    is_fast = args.skip_diacritics or args.expand_abbreviations
+
     # Step 2: Restore Romanian diacritics (skip if doc is already clean)
-    if args.skip_diacritics:
-        print("Skipping diacritics restoration (--skip-diacritics)")
+    if is_fast:
+        print("Skipping diacritics restoration")
     else:
         paragraphs = restore_diacritics(paragraphs, model=args.model)
 
@@ -1761,7 +1764,7 @@ def main():
     print(f"\nBuilding formatted document...")
     out_doc = build_formatted_document(str(input_path), section_map, paragraphs, template_path,
                                        model=args.model, authors=args.authors, title_en=args.title_en,
-                                       fast=args.skip_diacritics)
+                                       fast=is_fast)
 
     # Step 4: Save
     out_doc.save(str(output_path))
