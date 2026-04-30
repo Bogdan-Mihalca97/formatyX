@@ -417,6 +417,7 @@ def extract_paragraphs(doc_path):
                     "table_rows": num_rows,
                     "table_cols": num_cols,
                     "table_data": table_data,
+                    "table_xml": etree.tostring(tbl_elem, encoding="unicode"),
                 })
                 idx += 1
 
@@ -1597,6 +1598,30 @@ def build_formatted_document(doc_path, section_map, paragraphs, template_path, m
                 num_rows = len(table_data)
                 num_cols = max(len(row) for row in table_data) if table_data else 1
 
+                # Detect equation table: all cells empty except the last column of
+                # each row which holds an equation number like "(1)" or "[1]".
+                # These contain Word OMML equations that python-docx can't read as text.
+                # Restore them by copying the original table XML from the source document.
+                _eq_num_re = re.compile(r'^\s*[\(\[]\d+[\)\]]\s*$')
+                is_equation_table = (
+                    num_cols >= 2
+                    and all(
+                        all(not cell.strip() for cell in row[:-1])
+                        and _eq_num_re.match(row[-1])
+                        for row in table_data
+                        if any(c.strip() for c in row)  # skip fully-blank rows
+                    )
+                    and any(any(c.strip() for c in row) for row in table_data)
+                )
+
+                if is_equation_table and p_info.get("table_xml"):
+                    add_blank_lines(1)
+                    tbl_elem = etree.fromstring(p_info["table_xml"])
+                    out_doc.element.body.append(tbl_elem)
+                    add_blank_lines(1)
+                    prev_type = sec_type
+                    continue
+
                 # Determine caption source: pre-caption (prev_type), post-caption, or auto-generate
                 has_pre_caption = (prev_type == "table_caption")
                 post_cap_idx = post_caption_map.get(idx)
@@ -1805,6 +1830,18 @@ def main():
         with open(classification_cache, "w", encoding="utf-8") as f:
             json.dump(section_map, f)
         print(f"Classification cached: {classification_cache}")
+
+    # Post-process: data tables are unambiguous from extraction metadata —
+    # force them to table_content regardless of what Claude classified them as.
+    # This prevents the "[TABLE NxM] Header: ..." text leaking into body output
+    # when Claude Vision misclassifies an equation table as body/formula.
+    forced = 0
+    for p in paragraphs:
+        if p.get("table_type") == "data_table" and section_map.get(p["idx"]) != "table_content":
+            section_map[p["idx"]] = "table_content"
+            forced += 1
+    if forced:
+        print(f"Forced {forced} data_table paragraph(s) to table_content")
 
     # Show classification if requested
     if args.show_classification or args.dry_run:
