@@ -308,6 +308,12 @@ button.secondary:disabled { opacity: 0.5; cursor: not-allowed; }
       Fast mode <span class="opt">(skip diacritics restoration — document is already correctly formatted)</span>
     </label>
   </div>
+  <div class="field">
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+      <input type="checkbox" id="expand-abbrev" style="width:auto;margin:0;">
+      Expand abbreviations <span class="opt">(replace CEE, EMS, etc. with their full defined names)</span>
+    </label>
+  </div>
 
   <div class="btn-row">
     <button class="primary" id="run-btn" disabled onclick="startFormatting()">Format All</button>
@@ -455,6 +461,7 @@ async function processFmtNext() {
   const titleEn = document.getElementById('title-en').value.trim();
   if (titleEn) fd.append('title_en', titleEn);
   if (document.getElementById('fast-mode').checked) fd.append('fast_mode', 'on');
+  if (document.getElementById('expand-abbrev').checked) fd.append('expand_abbreviations', 'on');
 
   let jobId;
   try {
@@ -716,13 +723,14 @@ def fmt_format():
     authors = [a.strip() for a in authors_raw.splitlines() if a.strip()]
     title_en = request.form.get("title_en", "").strip()
     fast_mode = request.form.get("fast_mode") == "on"
+    expand_abbrev = request.form.get("expand_abbreviations") == "on"
 
     fmt_jobs[job_id] = {"status": "running", "message": "", "output_file": str(output_path), "log": "", "filename": f.filename}
-    threading.Thread(target=_run_formatter, args=(job_id, str(input_path), str(output_path), authors, title_en, fast_mode), daemon=True).start()
+    threading.Thread(target=_run_formatter, args=(job_id, str(input_path), str(output_path), authors, title_en, fast_mode, expand_abbrev), daemon=True).start()
     return jsonify({"job_id": job_id})
 
 
-def _run_formatter(job_id, input_path, output_path, authors, title_en, fast_mode=False):
+def _run_formatter(job_id, input_path, output_path, authors, title_en, fast_mode=False, expand_abbrev=False):
     cmd = [sys.executable, "-u", "formatter.py", input_path, "-o", output_path]
     if authors:
         cmd += ["--authors"] + authors
@@ -730,6 +738,8 @@ def _run_formatter(job_id, input_path, output_path, authors, title_en, fast_mode
         cmd += ["--title-en", title_en]
     if fast_mode:
         cmd.append("--skip-diacritics")
+    if expand_abbrev:
+        cmd.append("--expand-abbreviations")
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 text=True, encoding="utf-8", errors="replace", cwd=BASE_DIR)

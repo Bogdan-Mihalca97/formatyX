@@ -543,6 +543,56 @@ def build_claude_message(paragraphs):
     return "\n".join(lines)
 
 
+def expand_abbreviations(paragraphs):
+    """Find 'full name (ABBREV)' patterns and replace all uses of ABBREV with the full name.
+
+    Also removes the parenthetical (ABBREV) from the defining sentence so the
+    abbreviation never appears in the output at all.
+
+    Example:
+        "comunitatea energetica emergenta (CEE) este..."  →  "comunitatea energetica emergenta este..."
+        "CEE permite..."                                  →  "comunitatea energetica emergenta permite..."
+    """
+    # Matches: "some full name (ABBREV)" where ABBREV is 2-10 uppercase letters/digits
+    defn_re = re.compile(
+        r'([A-Za-zÀ-ɏ][A-Za-zÀ-ɏ\s,\-]{2,}?)\s*\(([A-Z][A-Z0-9]{1,9})\)'
+    )
+
+    # Pass 1 — collect all abbreviation definitions across all paragraphs
+    abbrev_map = {}  # ABBREV -> full name (first definition wins)
+    for p in paragraphs:
+        for m in defn_re.finditer(p.get("text", "")):
+            abbrev = m.group(2)
+            if abbrev not in abbrev_map:
+                abbrev_map[abbrev] = m.group(1).strip().rstrip(",")
+
+    if not abbrev_map:
+        return paragraphs
+
+    print(f"Expanding {len(abbrev_map)} abbreviation(s): {', '.join(sorted(abbrev_map))}")
+
+    def _replace(text):
+        # Step 1 — remove parenthetical definitions: " (CEE)" → ""
+        for abbrev in abbrev_map:
+            text = re.sub(rf'\s*\({re.escape(abbrev)}\)', '', text)
+        # Step 2 — replace standalone abbreviation with full name
+        for abbrev, full in abbrev_map.items():
+            text = re.sub(rf'\b{re.escape(abbrev)}\b', full, text)
+        return text
+
+    # Pass 2 — apply to all paragraph texts and table cell data
+    for p in paragraphs:
+        if p.get("text"):
+            p["text"] = _replace(p["text"])
+        if p.get("table_data"):
+            p["table_data"] = [
+                [_replace(cell) for cell in row]
+                for row in p["table_data"]
+            ]
+
+    return paragraphs
+
+
 def restore_diacritics(paragraphs, model="claude-sonnet-4-6"):
     """Use Claude to restore missing Romanian diacritics in all paragraph texts,
     including table cell contents stored in p['table_data'].
@@ -1643,6 +1693,8 @@ def main():
                         help="Skip diacritics restoration (document already has correct Romanian chars)")
     parser.add_argument("--load-classification", metavar="PATH",
                         help="Load a saved classification JSON, skipping Claude classification")
+    parser.add_argument("--expand-abbreviations", action="store_true",
+                        help="Replace abbreviations like CEE with their full defined names throughout the document")
 
     args = parser.parse_args()
 
@@ -1668,6 +1720,10 @@ def main():
         print("Skipping diacritics restoration (--skip-diacritics)")
     else:
         paragraphs = restore_diacritics(paragraphs, model=args.model)
+
+    # Step 2b: Expand abbreviations (e.g. CEE → comunitatea energetica emergenta)
+    if args.expand_abbreviations:
+        paragraphs = expand_abbreviations(paragraphs)
 
     # Step 3: Classify with Claude (or load cached classification)
     if args.load_classification:
