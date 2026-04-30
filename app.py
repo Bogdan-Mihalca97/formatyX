@@ -311,7 +311,7 @@ button.secondary:disabled { opacity: 0.5; cursor: not-allowed; }
   <div class="field">
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
       <input type="checkbox" id="expand-abbrev" style="width:auto;margin:0;">
-      Expand abbreviations <span class="opt">(replace CEE, EMS, etc. with their full defined names)</span>
+      Expand abbreviations &amp; fix references <span class="opt">(replace abbreviations with full names; move [1] citations to end of paragraph)</span>
     </label>
   </div>
 

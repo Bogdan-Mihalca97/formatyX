@@ -602,6 +602,44 @@ def expand_abbreviations(paragraphs):
     return paragraphs
 
 
+def fix_bibliography_references(paragraphs):
+    """Move inline bibliography citations from inside the text to the end of the paragraph.
+
+    Detects patterns like [1], [1,2], [1, 2, 3], [1-3] anywhere in a paragraph,
+    removes them from their original position, and appends them (deduplicated,
+    in order of first appearance) at the end of the paragraph text.
+
+    Example:
+        "Sistemul [3] are eficiență ridicată [1,2]."
+        → "Sistemul are eficiență ridicată. [3][1,2]"
+    """
+    # Matches [1], [1,2], [1, 2], [1-3], [1–3] — purely numeric content
+    ref_re = re.compile(r'\[\d+(?:\s*[,;–\-]\s*\d+)*\]')
+
+    for p in paragraphs:
+        text = p.get("text", "")
+        if not text:
+            continue
+
+        refs = ref_re.findall(text)
+        if not refs:
+            continue
+
+        # Remove refs from their inline positions
+        clean = ref_re.sub('', text)
+        # Tidy up spaces left behind (space before punctuation, double spaces)
+        clean = re.sub(r'\s+([.,;:!?])', r'\1', clean)
+        clean = re.sub(r'\s{2,}', ' ', clean).strip()
+
+        # Deduplicate while preserving first-appearance order
+        seen = set()
+        unique_refs = [r for r in refs if not (r in seen or seen.add(r))]
+
+        p["text"] = clean + " " + "".join(unique_refs)
+
+    return paragraphs
+
+
 def restore_diacritics(paragraphs, model="claude-sonnet-4-6"):
     """Use Claude to restore missing Romanian diacritics in all paragraph texts,
     including table cell contents stored in p['table_data'].
@@ -1733,9 +1771,10 @@ def main():
     else:
         paragraphs = restore_diacritics(paragraphs, model=args.model)
 
-    # Step 2b: Expand abbreviations (e.g. CEE → comunitatea energetica emergenta)
+    # Step 2b: Expand abbreviations + move inline bibliography refs to end of paragraph
     if args.expand_abbreviations:
         paragraphs = expand_abbreviations(paragraphs)
+        paragraphs = fix_bibliography_references(paragraphs)
 
     # Step 3: Classify with Claude (or load cached classification)
     if args.load_classification:
