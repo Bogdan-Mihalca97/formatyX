@@ -1114,7 +1114,7 @@ Translate the given Romanian abstract text to English.
     return parts if parts else [translated]
 
 
-def build_formatted_document(doc_path, section_map, paragraphs, template_path, model="claude-sonnet-4-6", authors=None, title_en=None):
+def build_formatted_document(doc_path, section_map, paragraphs, template_path, model="claude-sonnet-4-6", authors=None, title_en=None, fast=False):
     """Build the formatted output document using the template styles."""
 
     # Reuse existing template if present, otherwise create it once
@@ -1138,8 +1138,10 @@ def build_formatted_document(doc_path, section_map, paragraphs, template_path, m
             bib_entries.append(p_info["text"])
 
     bib_parsed = []
-    if bib_entries:
+    if bib_entries and not fast:
         bib_parsed = parse_bibliography_ieee(bib_entries, model=model)
+    elif bib_entries and fast:
+        print("Skipping IEEE bibliography parsing (fast mode)")
 
     # Generate table captions for data tables that have no explicit caption
     table_infos = []  # list of (paragraph idx, header summary)
@@ -1149,8 +1151,10 @@ def build_formatted_document(doc_path, section_map, paragraphs, template_path, m
             table_infos.append((p_info["idx"], " | ".join(header_row)))
 
     table_captions_map = {}  # paragraph idx -> generated caption text
-    if table_infos:
+    if table_infos and not fast:
         table_captions_map = generate_table_captions(table_infos, model=model)
+    elif table_infos and fast:
+        print("Skipping table caption generation (fast mode)")
 
     # --- Auto-reference insertion for figures and tables ---
     figure_numbers, table_numbers, formula_numbers, post_caption_map = assign_figure_table_numbers(paragraphs, section_map)
@@ -1700,7 +1704,8 @@ def main():
     # Step 3: Build formatted document
     print(f"\nBuilding formatted document...")
     out_doc = build_formatted_document(str(input_path), section_map, paragraphs, template_path,
-                                       model=args.model, authors=args.authors, title_en=args.title_en)
+                                       model=args.model, authors=args.authors, title_en=args.title_en,
+                                       fast=args.skip_diacritics)
 
     # Step 4: Save
     out_doc.save(str(output_path))
