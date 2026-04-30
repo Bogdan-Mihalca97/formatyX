@@ -1303,12 +1303,16 @@ def build_formatted_document(doc_path, section_map, paragraphs, template_path, m
         if old_num in referenced_figures:
             referenced_figures.add(new_num)
 
-    ref_insertions = build_reference_insertions(
-        paragraphs, section_map,
-        figure_numbers, table_numbers,
-        referenced_figures, referenced_tables,
-        table_captions_map, model=model
-    )
+    if not fast:
+        ref_insertions = build_reference_insertions(
+            paragraphs, section_map,
+            figure_numbers, table_numbers,
+            referenced_figures, referenced_tables,
+            table_captions_map, model=model
+        )
+    else:
+        ref_insertions = {}
+        print("Skipping reference sentence generation (fast mode)")
 
     def fix_table_refs(text):
         """Replace old table/figure numbers in body text with new sequential ones.
@@ -1705,14 +1709,14 @@ def build_formatted_document(doc_path, section_map, paragraphs, template_path, m
                 en_title = title_en if title_en else (" ".join(collected_title_en) if collected_title_en else None)
 
                 # If no English title found, translate Romanian title
-                if not en_title and collected_title_ro:
+                if not en_title and collected_title_ro and not fast:
                     print("No English title found — translating title...")
                     translated = translate_to_english(collected_title_ro, model=model)
                     en_title = " ".join(translated)
 
                 # If no English abstract found, translate Rezumat
                 abstract_text = collected_abstract_text
-                if not abstract_text and collected_rezumat_text:
+                if not abstract_text and collected_rezumat_text and not fast:
                     print("No English abstract found — translating Rezumat...")
                     abstract_text = translate_to_english(collected_rezumat_text, model=model)
 
