@@ -629,8 +629,9 @@ def fix_bibliography_references(paragraphs):
         if not text:
             continue
 
-        # Skip formula lines and table cells — [N] there is an equation number, not a ref
-        if _is_formula(text) or p.get("is_table_cell"):
+        # Skip formula lines, table cells, and bibliography entries.
+        # [N] at the very start of a line is an entry identifier, not an inline citation.
+        if _is_formula(text) or p.get("is_table_cell") or ref_re.match(text.lstrip()):
             continue
 
         refs = ref_re.findall(text)
@@ -1755,7 +1756,7 @@ def build_formatted_document(doc_path, section_map, paragraphs, template_path, m
                     elif part["format"] == "italic":
                         run.font.italic = True
             else:
-                add_paragraph(text, 'Bibliography Entry', bold=True)
+                add_paragraph(text, 'Bibliography Entry')
             prev_type = sec_type
             continue
 
