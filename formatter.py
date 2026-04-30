@@ -14,6 +14,9 @@ import sys
 import os
 import re
 import json
+import base64
+import tempfile
+import subprocess
 import argparse
 import copy
 from pathlib import Path
@@ -471,6 +474,40 @@ def extract_paragraphs(doc_path):
     return elements, doc
 
 
+def _docx_to_pdf_bytes(docx_path: str) -> bytes:
+    """Convert a DOCX to PDF bytes.
+
+    Tries docx2pdf (Windows/Word) first, falls back to LibreOffice headless.
+    """
+    import glob
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        pdf_path = os.path.join(tmpdir, "doc.pdf")
+        converted = False
+
+        try:
+            from docx2pdf import convert
+            convert(docx_path, pdf_path)
+            converted = True
+        except Exception as e:
+            print(f"docx2pdf unavailable ({e}), trying LibreOffice...")
+
+        if not converted:
+            result = subprocess.run(
+                ["soffice", "--headless", "--convert-to", "pdf", "--outdir", tmpdir, docx_path],
+                capture_output=True, text=True,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(f"LibreOffice PDF conversion failed: {result.stderr}")
+            pdf_files = glob.glob(os.path.join(tmpdir, "*.pdf"))
+            if not pdf_files:
+                raise RuntimeError("LibreOffice did not produce a PDF output")
+            pdf_path = pdf_files[0]
+
+        with open(pdf_path, "rb") as f:
+            return f.read()
+
+
 def build_claude_message(paragraphs):
     """Build the message to send to Claude for section detection."""
     lines = []
@@ -596,11 +633,36 @@ def restore_diacritics(paragraphs, model="claude-sonnet-4-6"):
     return paragraphs
 
 
-def classify_with_claude(paragraphs, model="claude-sonnet-4-6"):
-    """Send paragraphs to Claude for section classification."""
-    client = anthropic.Anthropic()  # Uses ANTHROPIC_API_KEY env var
+def classify_with_claude(paragraphs, model="claude-sonnet-4-6", docx_path=None):
+    """Send the full document PDF + paragraph list to Claude for section classification."""
+    client = anthropic.Anthropic()
 
-    message_text = build_claude_message(paragraphs)
+    paragraph_list = build_claude_message(paragraphs)
+
+    content = []
+
+    if docx_path:
+        print(f"Converting document to PDF for Claude vision analysis...")
+        pdf_bytes = _docx_to_pdf_bytes(docx_path)
+        print(f"  PDF size: {len(pdf_bytes) // 1024} KB — sending to Claude as document")
+        content.append({
+            "type": "document",
+            "source": {
+                "type": "base64",
+                "media_type": "application/pdf",
+                "data": base64.b64encode(pdf_bytes).decode(),
+            },
+        })
+        prompt = (
+            "The full document is attached above as a PDF. "
+            "Use the visual layout — font sizes, bold/italic formatting, centering, indentation, "
+            "and content — together with the paragraph list below to classify each section.\n\n"
+            f"Classify each paragraph in this document:\n\n{paragraph_list}"
+        )
+    else:
+        prompt = f"Classify each paragraph in this document:\n\n{paragraph_list}"
+
+    content.append({"type": "text", "text": prompt})
 
     print(f"Sending {len(paragraphs)} paragraphs to Claude ({model})...")
 
@@ -608,12 +670,7 @@ def classify_with_claude(paragraphs, model="claude-sonnet-4-6"):
         model=model,
         max_tokens=16384,
         system=SYSTEM_PROMPT,
-        messages=[
-            {
-                "role": "user",
-                "content": f"Classify each paragraph in this document:\n\n{message_text}"
-            }
-        ]
+        messages=[{"role": "user", "content": content}],
     )
 
     # Parse response
@@ -1578,6 +1635,10 @@ def main():
                         help="Only classify paragraphs, don't generate output")
     parser.add_argument("--show-classification", action="store_true",
                         help="Print the full classification before generating output")
+    parser.add_argument("--skip-diacritics", action="store_true",
+                        help="Skip diacritics restoration (document already has correct Romanian chars)")
+    parser.add_argument("--load-classification", metavar="PATH",
+                        help="Load a saved classification JSON, skipping Claude classification")
 
     args = parser.parse_args()
 
@@ -1598,11 +1659,30 @@ def main():
     paragraphs, doc = extract_paragraphs(str(input_path))
     print(f"Extracted {len(paragraphs)} paragraphs")
 
-    # Step 2: Restore Romanian diacritics
-    paragraphs = restore_diacritics(paragraphs, model=args.model)
+    # Step 2: Restore Romanian diacritics (skip if doc is already clean)
+    if args.skip_diacritics:
+        print("Skipping diacritics restoration (--skip-diacritics)")
+    else:
+        paragraphs = restore_diacritics(paragraphs, model=args.model)
 
-    # Step 3: Classify with Claude
-    section_map = classify_with_claude(paragraphs, model=args.model)
+    # Step 3: Classify with Claude (or load cached classification)
+    if args.load_classification:
+        print(f"Loading classification from: {args.load_classification}")
+        with open(args.load_classification, encoding="utf-8") as f:
+            raw = json.load(f)
+        section_map = {int(k): v for k, v in raw.items()}
+        # Fill any indices present in paragraphs but missing from cache
+        for p in paragraphs:
+            if p["idx"] not in section_map:
+                section_map[p["idx"]] = "empty" if p["is_empty"] else "body"
+        print(f"Loaded {len(section_map)} classifications")
+    else:
+        section_map = classify_with_claude(paragraphs, model=args.model, docx_path=str(input_path))
+        # Auto-save sidecar for future reuse
+        classification_cache = output_path.with_suffix(".classification.json")
+        with open(classification_cache, "w", encoding="utf-8") as f:
+            json.dump(section_map, f)
+        print(f"Classification cached: {classification_cache}")
 
     # Show classification if requested
     if args.show_classification or args.dry_run:

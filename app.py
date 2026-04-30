@@ -302,6 +302,12 @@ button.secondary:disabled { opacity: 0.5; cursor: not-allowed; }
     <label>English Title <span class="opt">(optional — auto-translated if empty)</span></label>
     <input type="text" id="title-en" placeholder="Leave blank to auto-translate">
   </div>
+  <div class="field">
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+      <input type="checkbox" id="fast-mode" style="width:auto;margin:0;">
+      Fast mode <span class="opt">(skip diacritics restoration — document is already correctly formatted)</span>
+    </label>
+  </div>
 
   <div class="btn-row">
     <button class="primary" id="run-btn" disabled onclick="startFormatting()">Format All</button>
@@ -448,6 +454,7 @@ async function processFmtNext() {
   if (authors) fd.append('authors', authors);
   const titleEn = document.getElementById('title-en').value.trim();
   if (titleEn) fd.append('title_en', titleEn);
+  if (document.getElementById('fast-mode').checked) fd.append('fast_mode', 'on');
 
   let jobId;
   try {
@@ -708,18 +715,21 @@ def fmt_format():
     authors_raw = request.form.get("authors", "").strip()
     authors = [a.strip() for a in authors_raw.splitlines() if a.strip()]
     title_en = request.form.get("title_en", "").strip()
+    fast_mode = request.form.get("fast_mode") == "on"
 
     fmt_jobs[job_id] = {"status": "running", "message": "", "output_file": str(output_path), "log": "", "filename": f.filename}
-    threading.Thread(target=_run_formatter, args=(job_id, str(input_path), str(output_path), authors, title_en), daemon=True).start()
+    threading.Thread(target=_run_formatter, args=(job_id, str(input_path), str(output_path), authors, title_en, fast_mode), daemon=True).start()
     return jsonify({"job_id": job_id})
 
 
-def _run_formatter(job_id, input_path, output_path, authors, title_en):
+def _run_formatter(job_id, input_path, output_path, authors, title_en, fast_mode=False):
     cmd = [sys.executable, "-u", "formatter.py", input_path, "-o", output_path]
     if authors:
         cmd += ["--authors"] + authors
     if title_en:
         cmd += ["--title-en", title_en]
+    if fast_mode:
+        cmd.append("--skip-diacritics")
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 text=True, encoding="utf-8", errors="replace", cwd=BASE_DIR)
