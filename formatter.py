@@ -1617,7 +1617,13 @@ def build_formatted_document(doc_path, section_map, paragraphs, template_path, m
                 if is_equation_table and p_info.get("table_xml"):
                     add_blank_lines(1)
                     tbl_elem = etree.fromstring(p_info["table_xml"])
-                    out_doc.element.body.append(tbl_elem)
+                    body = out_doc.element.body
+                    # Insert before sectPr — it must always be the last body element
+                    sect_pr = body.find(qn('w:sectPr'))
+                    if sect_pr is not None:
+                        sect_pr.addprevious(tbl_elem)
+                    else:
+                        body.append(tbl_elem)
                     add_blank_lines(1)
                     prev_type = sec_type
                     continue
